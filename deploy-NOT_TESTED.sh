@@ -36,7 +36,7 @@ echo "▶ Cloning Keberneth/Zabbix-Tools …"
 mkdir -p /tmp/zbx_nbox_install
 cd /tmp/zbx_nbox_install
 if [[ -d Zabbix-Tools ]]; then rm -rf Zabbix-Tools; fi
-git clone --depth 1 https://github.com/Keberneth/Zabbix-Tools.git
+git clone --depth 1 https://github.com/Keberneth/Zabbix-Extensions-Apps.git
 
 # copy compose + helper script
 mkdir -p /docker
