@@ -1,0 +1,40 @@
+# i ett terminalfönster på servern
+cd /opt/network_map
+
+# Run manually
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+
+ss -tunlp | grep 8000
+# du ska se: 0.0.0.0:8000  LISTEN  
+
+# Create folders
+mkdir /opt/network_map
+mkdir /opt/network_map/__pycache__
+mkdir /opt/network_map/static
+mkdir /opt/network_map/reports
+
+# Create a service
+/etc/systemd/system/network_map.service
+
+[Unit]
+Description=Zabbix Network Map API
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/network_map
+ExecStart=/usr/bin/env python3.9 -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
+
+# Allow Nginx to connect to the API
+setsebool -P httpd_can_network_connect 1
+systemctl restart nginx
+
+
+systemctl daemon-reload
+systemctl enable network_map
+systemctl start network_map

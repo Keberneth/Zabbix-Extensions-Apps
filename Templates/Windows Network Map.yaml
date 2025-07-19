@@ -1,0 +1,23 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    - uuid: 93878fe4cddd4318a380beaa434896a2
+      template: 'Windows Network Map'
+      name: 'Windows Network Map'
+      vendor:
+        name: Keberneth
+        version: 7.0-0
+      groups:
+        - name: Templates
+      items:
+        - uuid: 4d6da554836041129420cd4c7e18b5ac
+          name: windows-network-connections
+          key: windows-network-connections
+          delay: 5m
+          history: 61d
+          value_type: TEXT
+          trends: '0'
+          timeout: 10s

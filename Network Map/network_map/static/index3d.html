@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <title>Nätverkskarta 3D</title>
+  <script src="https://unpkg.com/3d-force-graph"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; font-family:sans-serif; background:#111; color:#000; }
+    #controls {
+      position:absolute; top:10px; left:10px;
+      background:rgba(255,255,255,0.9);
+      padding:10px; border-radius:5px; z-index:1000;
+      font-size:14px; max-width:350px; max-height:95%; overflow:auto;
+    }
+    #graph { position:absolute; top:0; left:0; width:100%; height:100%; z-index:1; }
+
+    /* — Summeringsrutan som i 2D-versionen — */
+    #summary {
+      position:absolute; bottom:10px; left:10px;
+      background:rgba(255,255,255,0.95);
+      padding:10px; border-radius:5px; z-index:1000;
+      font-size:14px; max-width:90%; max-height:50%; overflow:auto;
+      white-space:nowrap; font-family:monospace;
+    }
+    #summaryHeader { display:flex; align-items:center; margin-bottom:5px; }
+    #summaryHeader span { cursor:pointer; margin-right:8px; color:#999; font-weight:bold; }
+    #summaryFilters { margin-bottom:5px; }
+    #summaryFilters label { margin-right:10px; font-size:13px; }
+    #summaryContent { white-space:pre; overflow:auto; max-height:calc(50vh - 80px); }
+
+    /* — NetBox‐rutan — */
+    #nbinfo {
+      position:absolute; bottom:10px; right:10px;
+      background:rgba(255,255,255,0.95);
+      padding:10px; border-radius:5px; z-index:1000;
+      font-size:14px; max-width:300px; max-height:60%; overflow:auto;
+      white-space:normal; font-family:monospace;
+    }
+    #nbHeader { display:flex; align-items:center; margin-bottom:5px; }
+    #nbHeader span { cursor:pointer; margin-right:8px; color:#999; font-weight:bold; }
+    #nbDetails { list-style:none; padding:0; margin:0; }
+    #nbDetails li { margin-bottom:4px; }
+
+    /* — Dark‑mode färger — */
+    body.dark-mode { background:#181a1b !important; color:#e8e6e3 !important; }
+    #controls.dark-mode,
+    #summary.dark-mode,
+    #nbinfo.dark-mode { background:rgba(30,30,30,0.95) !important; color:#e8e6e3 !important; }
+    #graph.dark-mode { background:#23272e !important; }
+
+    /* — ProgressBar i nedladdningsknappen — */
+    #progressBar { height:100%; width:0; background-color:rgba(0,0,0,0.2); position:absolute; left:0; top:0; }
+  </style>
+</head>
+<body>
+
+  <div id="controls">
+    <h3>Nätverkskarta 3D</h3>
+    <label>Välj server (tom → globalt):<br>
+      <select id="hostSelect"><option value="">— Ingen, globalt filter —</option></select>
+    </label><br>
+    <label>Source: <input id="filterSrc" placeholder="node-id"></label><br>
+    <label>Dest:   <input id="filterDst" placeholder="node-id"></label><br>
+    <label>Port:   <input id="filterPort" placeholder="443 eller 1-5000"></label><br>
+    <label><input type="checkbox" id="excludePub"> Exkludera publika IP</label><br>
+    <label>IP/CIDR eller intervall att exkludera:<br>
+      <input id="filterIp" placeholder="192.168.1.10,10.0.0.0/16,192.168.1.0-192.168.1.68">
+    </label><br>
+    <label>Min avstånd (px): <input id="minSep" placeholder="50" value="50"></label><br>
+    <button id="btnApply">Rita graf</button>
+    <div style="display:inline-block; position:relative;">
+      <button id="btnDownloadReport" style="margin-top:4px;">
+        <span id="btnText">Ladda ner Rapport</span>
+        <div id="progressBar"></div>
+      </button>
+      <!-- <button id="toggleDarkMode" style="margin-left:8px; margin-top:4px;">Dark Mode</button> -->
+    </div>
+  </div>
+
+  <div id="summary" hidden>
+    <div id="summaryHeader">
+      <span id="minimizeSummary">[–]</span>
+      <span id="closeSummary">[x]</span>
+      <strong id="summaryTitle"></strong>
+    </div>
+    <div id="summaryFilters">
+      <label>Source: <input id="sumFilterSrc" placeholder="inkludera/exkludera..."></label>
+      <label>Dest:   <input id="sumFilterDst" placeholder="inkludera/exkludera..."></label>
+      <label>Port:   <input id="sumFilterPort" placeholder="inkludera/exkludera..."></label>
+    </div>
+    <div id="summaryContent"></div>
+  </div>
+
+  <div id="nbinfo" hidden>
+    <div id="nbHeader">
+      <span id="minimizeNb">[–]</span>
+      <span id="closeNb">[x]</span>
+      <strong id="nbTitle"></strong>
+    </div>
+    <ul id="nbDetails"></ul>
+  </div>
+
+  <div id="graph"></div>
+
+  <script>
+    const sel        = document.getElementById('hostSelect');
+    const summary    = document.getElementById('summary');
+    const nbinfo     = document.getElementById('nbinfo');
+    let rawData, Graph3D, summaryData={incoming:[],outgoing:[]};
+
+    // --- Samma helper‑funktioner som i 2D‑filen ---
+    function ipToLong(ip){return ip.split('.').reduce((a,b)=>((a<<8)+parseInt(b))>>>0,0);}    
+    function parseIpFilters(s){
+      if(!s) return [];
+      return s.split(',').map(x=>x.trim()).filter(x=>x).map(x=>{
+        let m;
+        if(m=x.match(/^([\d.]+)\s*-\s*([\d.]+)$/)){
+          let a=ipToLong(m[1]),b=ipToLong(m[2]); if(a>b)[a,b]=[b,a];
+          return {type:'range',start:a,end:b};
+        }
+        if(m=x.match(/^([\d.]+)\/(\d+)$/)){
+          const mask=(~((1<<(32-+m[2]))-1))>>>0,
+                base=ipToLong(m[1])&mask;
+          return {type:'cidr',base,mask};
+        }
+        const v=ipToLong(x); return isNaN(v)?null:{type:'exact',value:v};
+      }).filter(Boolean);
+    }
+    function matchesIpFilter(ip,fs){
+      const num=ipToLong(ip);
+      return fs.some(f=>
+        (f.type==='exact'&&num===f.value)||
+        (f.type==='cidr'&&(num&f.mask)===f.base)||
+        (f.type==='range'&&num>=f.start&&num<=f.end)
+      );
+    }
+    function parsePortFilter(s){
+      if(!s) return null;
+      let m=s.match(/^(\d+)\s*-\s*(\d+)$/);
+      if(m) return {type:'range',min:+m[1],max:+m[2]};
+      let v=+s; return isNaN(v)?null:{type:'exact',value:v};
+    }
+    function extractPort(lbl){ let m=lbl.match(/(\d+)/); return m?+m[1]:NaN; }
+    function partialMatch(v,f){ return !f||v.toLowerCase().includes(f.toLowerCase()); }
+    function edgeMatches(d,srcF,dstF,portF,excl,ipF){
+      if(srcF&&!partialMatch(d.source,srcF)) return false;
+      if(dstF&&!partialMatch(d.target,dstF)) return false;
+      const p=extractPort(d.label);
+      if(portF){
+        if(portF.type==='exact'&&p!==portF.value) return false;
+        if(portF.type==='range'&&(isNaN(p)||p<portF.min||p>portF.max)) return false;
+      }
+      if(excl&&d.isPublic) return false;
+      if(ipF.length){
+        if(d.srcIp&&matchesIpFilter(d.srcIp,ipF)) return false;
+        if(d.dstIp&&matchesIpFilter(d.dstIp,ipF)) return false;
+      }
+      return true;
+    }
+
+    // — Nya, mer avancerade token‑funktioner (samma som 2D) —
+    function parseSumTokens(str){
+      return str.split(',').map(s=>s.trim()).filter(Boolean).map(s=>{
+        const exclude=s.startsWith('!');
+        const token=exclude?s.slice(1):s;
+        if(token.includes('-')){
+          const [a,b]=token.split('-').map(Number);
+          return {range:[Math.min(a,b),Math.max(a,b)],exclude};
+        } else {
+          return {value:token,exclude};
+        }
+      });
+    }
+    function matchPortTokens(portNum,tokens){
+      if(!tokens.length) return true;
+      const includes=tokens.filter(t=>!t.exclude);
+      const excludes=tokens.filter(t=>t.exclude);
+      let ok=true;
+      if(includes.length){
+        ok=includes.some(t=>
+          t.range ? (portNum>=t.range[0]&&portNum<=t.range[1]) : portNum===Number(t.value)
+        );
+      }
+      if(!ok) return false;
+      if(excludes.length && excludes.some(t=>
+          t.range ? (portNum>=t.range[0]&&portNum<=t.range[1]) : portNum===Number(t.value)
+      )) return false;
+      return true;
+    }
+    function matchTokens(txt,toks){
+      if(!toks.length) return true;
+      const inc=toks.filter(t=>!t.exclude), exc=toks.filter(t=>t.exclude);
+      let ok=!inc.length||inc.some(t=>txt.toLowerCase().includes(t.value.toLowerCase()));
+      if(!ok) return false;
+      if(exc.some(t=>txt.toLowerCase().includes(t.value.toLowerCase()))) return false;
+      return true;
+    }
+
+    function populateHostDropdown(nodes){
+      sel.innerHTML='<option value="">— Ingen, globalt filter —</option>';
+      nodes.map(n=>n.data.id).sort().forEach(id=>{
+        const o=document.createElement('option'); o.value=o.textContent=id;
+        sel.appendChild(o);
+      });
+    }
+    function buildSubgraph(host,srcF,dstF,portF,excl,ipF){
+      const es=rawData.edges.filter(e=>
+        (e.data.source===host||e.data.target===host)&&
+        edgeMatches(e.data,srcF,dstF,portF,excl,ipF)
+      );
+      const ids=new Set([host]);
+      es.forEach(e=>ids.add(e.data.source)|ids.add(e.data.target));
+      return {
+        nodes:Array.from(ids).map(i=>rawData.nodes.find(n=>n.data.id===i)),
+        edges:es
+      };
+    }
+    function buildGlobalSubgraph(srcF,dstF,portF,excl,ipF){
+      const es=rawData.edges.filter(e=>edgeMatches(e.data,srcF,dstF,portF,excl,ipF));
+      const ids=new Set(); es.forEach(e=>ids.add(e.data.source)|ids.add(e.data.target));
+      return {
+        nodes:Array.from(ids).map(i=>rawData.nodes.find(n=>n.data.id===i)),
+        edges:es
+      };
+    }
+
+    // --- Ladda rådata & fyll dropdown redan vid sidladdning ---
+    window.addEventListener('load', ()=>{
+      fetch('/api/network_map')
+        .then(r=>r.json())
+        .then(data=>{
+          data.edges=data.edges.filter(e=>e.data.source&&e.data.target);
+          data.edges.forEach((e,i)=>e.data.id=`${e.data.source}_${e.data.target}_${i}`);
+          rawData=data;
+          populateHostDropdown(data.nodes);
+        })
+        .catch(console.error);
+    });
+
+    // --- Rita graf först när knappen klickas ---
+    document.getElementById('btnApply').onclick=()=>{
+      if(!rawData) return;
+      const srcF=document.getElementById('filterSrc').value.trim();
+      const dstF=document.getElementById('filterDst').value.trim();
+      const portF=parsePortFilter(document.getElementById('filterPort').value.trim());
+      const excl=document.getElementById('excludePub').checked;
+      const ipF =parseIpFilters(document.getElementById('filterIp').value.trim());
+      const host=sel.value;
+      const sub=host?buildSubgraph(host,srcF,dstF,portF,excl,ipF):buildGlobalSubgraph(srcF,dstF,portF,excl,ipF);
+      drawGraph(sub);
+    };
+
+    // --- Rendera 3D‑grafen ---
+    function drawGraph({nodes,edges}){
+      if(Graph3D && Graph3D._destructor) Graph3D._destructor();
+      Graph3D=ForceGraph3D()(document.getElementById('graph'))
+        .graphData({
+          nodes:nodes.map(n=>({id:n.data.id,label:n.data.label,ip:n.data.ip})),
+          links:edges.map(e=>({
+            source:e.data.source,target:e.data.target,
+            label:e.data.label,isPublic:e.data.isPublic,
+            srcIp:e.data.srcIp,dstIp:e.data.dstIp
+          }))
+        })
+        .nodeLabel(n=>n.label)
+        .linkLabel(l=>l.label)
+        .linkColor(l=>l.isPublic?'#f00':'#888')
+        .linkDirectionalParticles(1)
+        .linkDirectionalParticleWidth(1)
+        .onNodeClick(node=>{
+          // — Summeringsruta —
+          const inc=rawData.edges.filter(e=>e.data.target===node.id);
+          const out=rawData.edges.filter(e=>e.data.source===node.id);
+          summaryData={
+            incoming:inc.map(e=>({src:e.data.source,dst:e.data.target,port:e.data.label})),
+            outgoing:out.map(e=>({src:e.data.source,dst:e.data.target,port:e.data.label}))
+          };
+          document.getElementById('summaryTitle').textContent=`Kommunikation för ${node.label}`;
+          document.getElementById('sumFilterSrc').value=
+          document.getElementById('sumFilterDst').value=
+          document.getElementById('sumFilterPort').value='';
+          summary.hidden=false;
+          document.getElementById('summaryFilters').style.display='block';
+          document.getElementById('summaryContent').style.display='block';
+          updateSummaryDisplay();
+
+          // — NetBox‑info —
+          fetch(`/api/netbox/vm?name=${encodeURIComponent(node.id)}`)
+            .then(r=>r.ok?r.json():Promise.reject())
+            .then(vm=>fetch(`/api/netbox/services-by-vm?name=${encodeURIComponent(node.id)}`).then(r=>r.json()).then(svcs=>[vm,svcs]))
+            .then(([vm,svcs])=>{
+              const cf=vm.custom_fields||{}, list=[];
+              list.push(`<li>CPU: ${vm.vcpus} vCPU</li>`);
+              list.push(`<li>RAM: ${(vm.memory/1024).toFixed(1)} GB</li>`);
+              list.push(`<li>Disk: ${(vm.disk/1024).toFixed(1)} GB</li>`);
+              list.push(`<li>Patch-fönster: ${cf.patch_window||'–'}</li>`);
+              if(Array.isArray(cf.ha_with_server)&&cf.ha_with_server.length){
+                const links=cf.ha_with_server.map(h=>`<a href="${h.url}" target="_blank">${h.display}</a>`).join(', ');
+                list.push(`<li>HA: ${links}</li>`);
+              }
+              if(svcs.length){
+                const sl=svcs.map(s=>`<li>${s.name} (${s.protocol.label}/${s.ports.join(',')})</li>`).join('');
+                list.push(`<li>Services:<ul>${sl}</ul></li>`);
+              }
+              list.push(`<li><a href="${vm.display_url}" target="_blank">Öppna i NetBox</a></li>`);
+              document.getElementById('nbTitle').textContent=vm.display;
+              document.getElementById('nbDetails').innerHTML=list.join('');
+              nbinfo.hidden=false;
+            })
+            .catch(_=>nbinfo.hidden=true);
+        });
+    }
+
+    // --- Summeringsrutan styrning ---
+    document.getElementById('closeSummary').onclick=()=>summary.hidden=true;
+    document.getElementById('minimizeSummary').onclick=function(){
+      const f=document.getElementById('summaryFilters'), c=document.getElementById('summaryContent');
+      if(f.style.display==='none'){ f.style.display='block'; c.style.display='block'; this.textContent='[–]'; }
+      else{ f.style.display='none'; c.style.display='none'; this.textContent='[+]'; }
+    };
+    ['sumFilterSrc','sumFilterDst','sumFilterPort'].forEach(id=>
+      document.getElementById(id).addEventListener('input',updateSummaryDisplay)
+    );
+    function updateSummaryDisplay(){
+      const fs=parseSumTokens(document.getElementById('sumFilterSrc').value),
+            fd=parseSumTokens(document.getElementById('sumFilterDst').value),
+            fp=parseSumTokens(document.getElementById('sumFilterPort').value),
+            lines=[];
+      if(summaryData.incoming.length){
+        lines.push('Inkommande:');
+        summaryData.incoming.forEach(e=>{
+          const pNum=extractPort(e.port);
+          if(matchTokens(e.src,fs)&&matchTokens(e.dst,fd)&&matchPortTokens(pNum,fp))
+            lines.push(`${e.src}\t${e.dst}\t${e.port}`);
+        });
+      }
+      if(summaryData.outgoing.length){
+        if(lines.length) lines.push('');
+        lines.push('Utgående:');
+        summaryData.outgoing.forEach(e=>{
+          const pNum=extractPort(e.port);
+          if(matchTokens(e.src,fs)&&matchTokens(e.dst,fd)&&matchPortTokens(pNum,fp))
+            lines.push(`${e.src}\t${e.dst}\t${e.port}`);
+        });
+      }
+      document.getElementById('summaryContent').textContent=lines.join('\n');
+    }
+
+    // --- NetBox‑rutan styrning ---
+    document.getElementById('closeNb').onclick=()=>nbinfo.hidden=true;
+    document.getElementById('minimizeNb').onclick=function(){
+      const d=document.getElementById('nbDetails');
+      if(d.style.display==='none'){ d.style.display='block'; this.textContent='[–]'; }
+      else{ d.style.display='none'; this.textContent='[+]'; }
+    };
+
+    // --- Döljer hostSelect + etikett för renare UI ---
+    (function(){
+      const s=document.getElementById('hostSelect');
+      if(s){ s.style.display='none'; if(s.parentElement) s.parentElement.style.display='none'; }
+    })();
+
+    // --- Dark‑mode toggle ---
+    document.getElementById('toggleDarkMode').onclick=function(){
+      document.body.classList.toggle('dark-mode');
+      document.getElementById('controls').classList.toggle('dark-mode');
+      document.getElementById('summary').classList.toggle('dark-mode');
+      document.getElementById('nbinfo').classList.toggle('dark-mode');
+      document.getElementById('graph').classList.toggle('dark-mode');
+    };
+
+    // --- Rapport‑nedladdning med progressbar ---
+    document.getElementById('btnDownloadReport').onclick=function(){
+      const btn=this, pb=document.getElementById('progressBar'), txt=document.getElementById('btnText');
+      btn.disabled=true; txt.textContent='Downloading...';
+      let prog=0;
+      const iv=setInterval(()=>{ prog=(prog+10)%100; pb.style.width=prog+'%'; },200);
+      fetch('/api/reports/download_zip')
+        .then(r=>{ if(!r.ok) throw new Error('Network response was not ok'); return r.blob(); })
+        .then(blob=>{
+          const url=URL.createObjectURL(blob), a=document.createElement('a');
+          a.style.display='none'; a.href=url; a.download='network_reports.zip'; document.body.appendChild(a); a.click(); URL.revokeObjectURL(url); document.body.removeChild(a);
+        })
+        .catch(err=>alert('Failed to download reports: '+err))
+        .finally(()=>{
+          clearInterval(iv); pb.style.width='100%';
+          setTimeout(()=>{ pb.style.width='0%'; btn.disabled=false; txt.textContent='Ladda ner Rapport'; },500);
+        });
+    };
+  </script>
+</body>
+</html>

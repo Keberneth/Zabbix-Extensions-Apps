@@ -1,0 +1,21 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    - uuid: e52becc771bf47d099764f8aad2aeaf2
+      template: 'Linux Network Map'
+      name: 'Linux Network Map'
+      vendor:
+        name: Keberneth
+        version: 7.0-0
+      groups:
+        - name: Templates
+      items:
+        - uuid: 2b14d5020c664456aae0b34e56dea7af
+          name: linux-network-connections
+          key: linux-network-connections
+          delay: 5m
+          value_type: TEXT
+          trends: '0'

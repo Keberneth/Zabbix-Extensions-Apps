@@ -1,0 +1,127 @@
+version: "3.9"
+
+###############################################################################
+# ── NETBOX STACK ──────────────────────────────────────────────────────────── #
+###############################################################################
+services:
+  nbox-postgres:
+    image: postgres:16-alpine
+    container_name: nbox-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: netbox
+      POSTGRES_USER: netbox
+      POSTGRES_PASSWORD: nboxPassword!
+    volumes:
+      - /docker/netbox/postgres-data:/var/lib/postgresql/data:Z
+    networks: [netbox-net]
+
+  nbox-redis:
+    image: redis:7-alpine
+    container_name: nbox-redis
+    restart: unless-stopped
+    networks: [netbox-net]
+
+  netbox:
+    image: netboxcommunity/netbox:latest
+    container_name: netbox
+    depends_on: [nbox-postgres, nbox-redis]
+    restart: unless-stopped
+    ports:
+      - "8000:8080"                # http://<host>:8000
+    environment:
+      DB_HOST: nbox-postgres
+      DB_NAME: netbox
+      DB_USER: netbox
+      DB_PASSWORD: nboxPassword!
+      REDIS_HOST: nbox-redis
+      DB_TIMEOUT: "60"
+      DB_WAIT_DEBUG: "1"
+      SECRET_KEY: 'netbox_secret_key'
+    volumes:
+      - /docker/netbox/media:/opt/netbox/netbox/media:Z
+      - /docker/netbox/reports:/opt/netbox/netbox/reports:Z
+      - /docker/netbox/scripts:/opt/netbox/netbox/scripts:Z
+    networks: [netbox-net]
+
+###############################################################################
+# ── ZABBIX STACK ──────────────────────────────────────────────────────────── #
+###############################################################################
+  zbx-postgres:
+    image: postgres:16-alpine
+    container_name: zabbix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix_user
+      POSTGRES_PASSWORD: zabbixPassword!
+    volumes:
+      - /docker/zabbix/postgres-data:/var/lib/postgresql/data:Z
+    networks: [zabbix-net]
+
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
+    container_name: zabbix-server
+    restart: unless-stopped
+    depends_on: [zbx-postgres]
+    environment:
+      DB_SERVER_HOST: zabbix-postgres
+      POSTGRES_USER: zabbix_user
+      POSTGRES_PASSWORD: zabbixPassword!
+      POSTGRES_DB: zabbix
+      ZBX_SERVER_NAME: "Zabbix Server"
+    ports:
+      - "10051:10051"              # trapper / active checks
+    networks: [zabbix-net]
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
+    container_name: zabbix-web
+    restart: unless-stopped
+    depends_on: [zabbix-server]
+    environment:
+      DB_SERVER_HOST: zabbix-postgres
+      POSTGRES_USER: zabbix_user
+      POSTGRES_PASSWORD: zabbixPassword!
+      POSTGRES_DB: zabbix
+      ZBX_SERVER_HOST: zabbix-server
+      PHP_TZ: Europe/Stockholm
+    ports:
+      - "8080:8080"                # http://<host>:8080
+    networks: [zabbix-net]
+
+  # Built‑in agent container (monitored via host‑exposed port 10050)
+  zabbix-agent:
+    image: zabbix/zabbix-agent2:latest
+    container_name: zabbix-agent
+    restart: unless-stopped
+    depends_on: [zabbix-server]
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+    ports:
+      - "10050:10050"              # expose to the host
+    networks: [zabbix-net]
+
+  # Extra agent that sees the HOST OS directly
+  zabbix-agent-host:
+    image: zabbix/zabbix-agent2:latest
+    container_name: zabbix-agent-host
+    restart: unless-stopped
+    network_mode: host             # host networking
+    pid: host
+    privileged: true
+    environment:
+      ZBX_SERVER_HOST: 127.0.0.1
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /proc:/proc:ro
+    # NOTE: no networks: [...] because network_mode: host
+
+###############################################################################
+# ── DOCKER NETWORKS ───────────────────────────────────────────────────────── #
+###############################################################################
+networks:
+  netbox-net: {driver: bridge}
+  zabbix-net: {driver: bridge}

@@ -1,0 +1,151 @@
+Syfte: Beskriver installationsprocessen för att möjliggöra datainsamling från nätverkskartan via Zabbix agent.
+
+Kund Servrar:
+Linux
+    1. Placera skriptet
+        ◦ /etc/zabbix/scripts/linux-network-connections.sh
+        ◦ Säkerställ exekveringsrättigheter: chmod +x /etc/zabbix/scripts/linux-network-connections.sh
+    2. Lägg till UserParameter
+        ◦ Fil: /etc/zabbix/zabbix_agentd.d/linux-network-connections-param.conf
+Innehåll:
+UserParameter=linux-network-connections,/etc/zabbix/scripts/linux-network-connections.sh
+
+    3. Lägg till UserParameter
+        ◦ systemctl restart zabbix-agent
+
+Windows
+    1. Placera skriptet
+        ◦ C:\Program Files\Zabbix Agent 2\scripts\windows-network-connections.ps1
+    2. Lägg till UserParameter
+        ◦ Fil: C:\Program Files\Zabbix Agent 2\zabbix_agent2.d\windows-network-connections-param.conf
+Innehåll:
+UserParameter=windows-network-connections,powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\Zabbix Agent 2\scripts\windows-network-connections.ps1"
+
+    3. Starta om Zabbix Agent 2
+        ◦ Restart-Service "Zabbix Agent 2"
+
+
+Zabbix Server:
+Skapa följande mapp:
+/opt/network_map/reports
+
+Skapa skriptet:
+/opt/network_map/network-map-report.py
+
+Installera beroenden:
+pip install fastapi uvicorn requests
+
+Skapa service konto på:
+adduser svc_cron_scheduler
+passwd svc_cron_scheduler
+usermod -aG wheel svc_cron_scheduler
+
+Sätt behörigheter:
+setfacl -R -m u:svc_cron_scheduler:rwx /opt/network_map/
+setfacl -R -m d:u:svc_cron_scheduler:rwx /opt/network_map/
+
+# Byt till service kontot för att skapa cronjob
+su - svc_cron_scheduler 
+
+Redigera cronjob:
+crontab -e
+
+Lägg till:
+0 22 28-31 * * [ "$(date -d tomorrow +\%d)" = "01" ] && python3 /opt/network_map/network-map-report.py
+
+
+Skapa tjänsten:
+
+# Create folders
+mkdir /opt/network_map
+mkdir /opt/network_map/__pycache__
+mkdir /opt/network_map/static
+
+# Byt till mapp
+cd /opt/network_map
+
+Lägg till filerna:
+/opt/network_map/main.py
+/opt/network_map/static/index.html
+
+# Kör appen manuellt för att testa: ctrl+c för att avsluta.
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+
+Kolla att appen lyssnar på porten:
+ss -tunlp | grep 8000
+# du ska se: 0.0.0.0:8000  LISTEN  
+
+# Create a service
+/etc/systemd/system/network_map.service
+
+[Unit]
+Description=Zabbix Network Map API
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/network_map
+ExecStart=/usr/bin/env python3.9 -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
+
+Skapa nginx confen:
+/etc/nginx/conf.d/network_map.conf
+
+upstream network_map_api {
+    server 127.0.0.1:8000;    # Uvicorn körs här
+}
+
+# Redirect HTTP to HTTPS
+server {
+    listen 80;
+    server_name map.example.se;
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS server
+server {
+    listen 443 ssl;
+    server_name map.example.se;
+
+    ssl_certificate     /etc/pki/selfsigned/certificate_name.pem;
+    ssl_certificate_key /etc/pki/selfsigned/key_name.key;
+
+    ## 1) Serve SPA:n
+    root   /opt/network_map/static;
+    index  index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    ## 2) Proxy alla /api/-anrop till FastAPI
+    location ^~ /api/ {
+        proxy_pass         http://network_map_api;
+        proxy_http_version 1.1;
+        proxy_set_header   Host            $host;
+        proxy_set_header   X-Real-IP       $remote_addr;
+        proxy_set_header   Connection      "";
+        proxy_read_timeout 90;
+    }
+
+    ## 3) Valfri 50x-sida
+    error_page 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
+
+
+# Tillåt Nginx att ansluta till API
+setsebool -P httpd_can_network_connect 1
+systemctl restart nginx
+
+
+Sätt behörigheterna, activera tjänsten, starta om tjänsten och ladda om nginx:
+systemctl daemon-reload
+systemctl enable network_map.service
+chown nginx:nginx -R /opt/network_map/ && chmod 755 -R /opt/network_map/ && systemctl restart network_map.service && nginx -t && nginx -s reload && systemctl status network_map.service && systemctl restart nginx
