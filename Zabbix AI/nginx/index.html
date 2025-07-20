@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="utf-8">
+    <title>Zabbix AI • Felsökningsrapporter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Minimal, ren design utan externa ramverk -->
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --fg: #212529;
+            --accent: #c6011f;      /* Zabbix-röd */
+            --card-bg: #ffffff;
+            --radius: 12px;
+            --shadow: 0 4px 12px rgba(0,0,0,.06);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            background: var(--bg);
+            color: var(--fg);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        header {
+            background: var(--accent);
+            color: #fff;
+            padding: 1.2rem 1.5rem;
+        }
+        header h1 { margin: 0; font-size: 1.75rem; }
+        main {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            max-width: 700px;
+            width: 100%;
+            padding: 2.5rem 2rem;
+            text-align: center;
+        }
+        .card h2 { margin-top: 0; color: var(--accent); }
+        .card p { margin-bottom: 1.2rem; }
+        .btn {
+            display: inline-block;
+            padding: 0.6rem 1.2rem;
+            border-radius: var(--radius);
+            text-decoration: none;
+            color: #fff;
+            background: var(--accent);
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #9c0018; }
+
+        footer {
+            text-align: center;
+            font-size: 0.875rem;
+            padding: 1rem 0 1.5rem;
+            opacity: 0.7;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #1f1f1f;
+                --fg: #e0e0e0;
+                --card-bg: #2a2a2a;
+                --shadow: 0 4px 12px rgba(0,0,0,.3);
+            }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Zabbix AI-rapporter</h1>
+</header>
+
+<main>
+    <div class="card">
+        <h2>Förhandsvy av felsökningsrapporter</h2>
+        <p>
+            Denna plats kommer automatiskt att fyllas med statiska <strong>HTML-rapporter</strong> som genererats av vår
+            AI-pipeline när <em>High</em> eller <em>Critical</em> larm triggas i Zabbix.<br>
+            Rapporterna innehåller sammanfattningar, grundorsaksanalyser och
+            föreslagna åtgärder.
+        </p>
+
+        <p>
+            När en rapport har skapats hittar du den i fil-listan<br>
+            <big>FILERNA INNEHÅLLER BARA AI BASERAD HJÄLP FÖR ATT UNDERLÄTTA FELSÖKNING. INFORMATIONEN KAN VARA FEL OCH ORDENKLIG FELSÖKNING BEHÖVER ALLTID UTFÖRAS</big>
+        </p>
+
+        <p><a class="btn" href="./_list/">Visa senast genererade filer</a></p>
+
+    </div>
+</main>
+
+<footer>
+    Zabbix + AI-assisterad felsökning
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,15 @@
+# cat /etc/systemd/system/zabbix_ai.service
+[Unit]
+Description=Zabbix AI Troubleshooter Service
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/zabbix_ai
+ExecStart=/usr/bin/env python3.12 -m uvicorn zbx_ai:app --host 0.0.0.0 --port 8800
+Restart=always
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
+

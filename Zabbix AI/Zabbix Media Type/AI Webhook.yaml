@@ -1,0 +1,112 @@
+zabbix_export:
+  version: '7.0'
+  media_types:
+    - name: 'AI Webhook'
+      type: WEBHOOK
+      parameters:
+        - name: datetime
+          value: '{EVENT.DATE} {EVENT.TIME}'
+        - name: eventid
+          value: '{EVENT.ID}'
+        - name: event_status
+          value: '{EVENT.STATUS}'
+        - name: event_value
+          value: '{EVENT.VALUE}'
+        - name: hostname
+          value: '{HOST.NAME}'
+        - name: host_ip
+          value: '{HOST.IP}'
+        - name: severity
+          value: '{EVENT.NSEVERITY}'
+        - name: tags
+          value: '{EVENT.TAGSJSON}'
+        - name: trigger_description
+          value: '{TRIGGER.DESCRIPTION}'
+        - name: trigger_name
+          value: '{TRIGGER.NAME}'
+      script: |
+        /*
+         *  AI Troubleshooter – skickar event­-data till FastAPI
+         */
+        try {
+            // Alla Parameter-fälten hamnar som JSON-sträng i "value"
+            var params = JSON.parse(value);
+        
+            // Bygg den struktur som Python-koden förväntar sig
+            var body = {
+                message: JSON.stringify(params)   // FastAPI plockar isär detta
+            };
+        
+            var req = new HttpRequest();
+            req.addHeader('Content-Type: application/json');
+        
+            // OBS: uppdatera URL om du använder SSL eller annan port
+            var resp = req.post('http://192.168.1.10:8800/webhook', JSON.stringify(body));
+        
+            if (req.getStatus() >= 200 && req.getStatus() < 300) {
+                return 'Sent OK (' + req.getStatus() + ')';
+            }
+            throw 'HTTP ' + req.getStatus() + ' – ' + resp;
+        
+        } catch (error) {
+            Zabbix.log(4, '[Ollama Webhook] Webhook failed: ' + error);
+            throw 'Webhook failed: ' + error;
+        }
+      timeout: 60s
+      message_templates:
+        - event_source: TRIGGERS
+          operation_mode: PROBLEM
+          subject: 'Problem: {EVENT.NAME}'
+          message: |
+            {
+              "eventid": "{EVENT.ID}",
+              "trigger_id": "{TRIGGER.ID}",
+              "trigger_name": "{TRIGGER.NAME}",
+              "trigger_description": "{TRIGGER.DESCRIPTION}",
+              "trigger_expression": "{TRIGGER.EXPRESSION}",
+              "hostname": "{HOST.NAME}",
+              "host_ip": "{HOST.IP}",
+              "host_groups": "{HOSTGROUP.NAME}",
+              "severity": "{EVENT.SEVERITY}",
+              "severity_num": "{EVENT.NSEVERITY}",
+              "event_value": "{EVENT.VALUE}",
+              "event_status": "{EVENT.STATUS}",
+              "event_time": "{EVENT.DATE} {EVENT.TIME}",
+              "tags": {EVENT.TAGSJSON},
+              "items": [
+                {
+                  "itemid": "{ITEM.ID1}",
+                  "item_name": "{ITEM.NAME1}",
+                  "item_key": "{ITEM.KEY1}",
+                  "item_value": "{ITEM.LASTVALUE1}"
+                },
+                {
+                  "itemid": "{ITEM.ID2}",
+                  "item_name": "{ITEM.NAME2}",
+                  "item_key": "{ITEM.KEY2}",
+                  "item_value": "{ITEM.LASTVALUE2}"
+                }
+              ],
+              "opdata": "{EVENT.OPDATA}"
+            }
+        - event_source: TRIGGERS
+          operation_mode: RECOVERY
+          subject: 'Resolved in {EVENT.DURATION}: {EVENT.NAME}'
+          message: |
+            Problem has been resolved at {EVENT.RECOVERY.TIME} on {EVENT.RECOVERY.DATE}
+            Problem name: {EVENT.NAME}
+            Problem duration: {EVENT.DURATION}
+            Host: {HOST.NAME}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            {TRIGGER.URL}
+        - event_source: SERVICE
+          operation_mode: RECOVERY
+          subject: 'Service "{SERVICE.NAME}" resolved in {EVENT.DURATION}: {EVENT.NAME}'
+          message: |
+            Service "{SERVICE.NAME}" has been resolved at {EVENT.RECOVERY.TIME} on {EVENT.RECOVERY.DATE}
+            Problem name: {EVENT.NAME}
+            Problem duration: {EVENT.DURATION}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            Service description: {SERVICE.DESCRIPTION}
