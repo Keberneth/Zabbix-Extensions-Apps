@@ -40,5 +40,9 @@ leaves everything else untouched.
 --------------------------------------------------------------------------------------
 
 If you want every service in the file, omit the service names entirely:
-docker compose -f docker-compose-zbx_nbox.yml \
-  up -d --pull always --force-recreate
+cd /docker               # directory that holds the compose file
+
+docker compose \
+  -f docker-compose-zbx_nbox.yml \
+  up -d --pull always --force-recreate \
+  zabbix-server zabbix-web netbox
