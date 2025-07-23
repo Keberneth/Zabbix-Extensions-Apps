@@ -20,6 +20,7 @@ docker compose -f docker-compose-zbx_nbox.yml exec netbox /bin/bash
 
     # Create an admin user
 docker compose -f docker-compose-zbx_nbox.yml exec netbox /bin/bash
+
   python3 /opt/netbox/netbox/manage.py createsuperuser
 
 
