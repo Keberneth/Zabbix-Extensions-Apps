@@ -1,9 +1,11 @@
 # Create a docker folder. I have created it directly under root 
 mkdir /docker
 
-# 1. generate one new NetBox secret (≥ 50 chars) and paste into the file
+# 1. generate one new NetBox secret (≥ 50 chars) and paste into the file docker-compose-zbx_nbox.yml
+python3 -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+
 docker compose -f docker-compose-zbx_nbox.yml run --rm netbox \
-  python3 /opt/netbox/netbox/generate_secret_key.py
+#  python3 /opt/netbox/netbox/generate_secret_key.py
 
 # 2. bring everything up
 docker compose -f docker-compose-zbx_nbox.yml up -d
