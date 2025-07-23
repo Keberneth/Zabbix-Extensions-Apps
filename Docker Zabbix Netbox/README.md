@@ -4,19 +4,20 @@ mkdir /docker
 # 1. generate one new NetBox secret (≥ 50 chars) and paste into the file docker-compose-zbx_nbox.yml
 python3 -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
 
-docker compose -f docker-compose-zbx_nbox.yml run --rm netbox \
-#  python3 /opt/netbox/netbox/generate_secret_key.py
+# Or spin up the container, login to it and generate the key
+docker compose -f docker-compose-zbx_nbox.yml exec netbox /bin/bash
+  python3 /opt/netbox/netbox/generate_secret_key.py
 
 # 2. bring everything up
 docker compose -f docker-compose-zbx_nbox.yml up -d
 
 # 3. initial NetBox DB & admin user
     # Do a migration of Netbox
-docker compose -f docker-compose-zbx_nbox.yml exec netbox \
+docker compose -f docker-compose-zbx_nbox.yml exec netbox /bin/bash
   python3 /opt/netbox/netbox/manage.py migrate
 
     # Create an admin user
-docker compose -f docker-compose-zbx_nbox.yml exec netbox \
+docker compose -f docker-compose-zbx_nbox.yml exec netbox /bin/bash
   python3 /opt/netbox/netbox/manage.py createsuperuser
 
 
