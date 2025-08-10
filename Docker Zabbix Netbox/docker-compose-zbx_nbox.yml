@@ -1,127 +1,132 @@
-version: "3.9"
+# Compose Specification – no 'version:' key (obsolete with Compose v2)
+# Zabbix (server+web+agent) + NetBox (linuxserver.io) with PostgreSQL and Redis
+# SELinux-friendly: no bind of host /proc onto container /proc.
 
-###############################################################################
-# ── NETBOX STACK ──────────────────────────────────────────────────────────── #
-###############################################################################
 services:
+  # ------------------------- ZABBIX ---------------------------------
+  zbx-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${ZBX_DB_NAME:-zabbix}
+      POSTGRES_USER: ${ZBX_DB_USER:-zabbix}
+      POSTGRES_PASSWORD: ${ZBX_DB_PASSWORD:-zabbix_pwd}
+    volumes:
+      - zbx-pgdata:/var/lib/postgresql/data
+    networks: [zabbix-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ZBX_DB_USER:-zabbix} -d ${ZBX_DB_NAME:-zabbix} -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.4-latest
+    environment:
+      DB_SERVER_HOST: zbx-postgres
+      DB_SERVER_PORT: 5432
+      POSTGRES_DB: ${ZBX_DB_NAME:-zabbix}
+      POSTGRES_USER: ${ZBX_DB_USER:-zabbix}
+      POSTGRES_PASSWORD: ${ZBX_DB_PASSWORD:-zabbix_pwd}
+      ZBX_SERVER_NAME: "Zabbix in Docker"
+    ports:
+      - "10051:10051"
+    depends_on:
+      zbx-postgres:
+        condition: service_healthy
+    networks: [zabbix-net]
+    restart: unless-stopped
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.4-latest
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      DB_SERVER_HOST: zbx-postgres
+      DB_SERVER_PORT: 5432
+      POSTGRES_DB: ${ZBX_DB_NAME:-zabbix}
+      POSTGRES_USER: ${ZBX_DB_USER:-zabbix}
+      POSTGRES_PASSWORD: ${ZBX_DB_PASSWORD:-zabbix_pwd}
+      PHP_TZ: ${TZ:-Europe/Stockholm}
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    depends_on:
+      - zabbix-server
+    networks: [zabbix-net]
+    restart: unless-stopped
+
+  zabbix-agent:
+    image: zabbix/zabbix-agent2:alpine-7.4-latest
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_HOSTNAME: ${ZBX_AGENT_HOSTNAME:-zabbix-agent}
+    # NOTE: Map host /proc and /sys to NON-/proc paths to avoid SELinux setexeccon write to /proc/thread-self/attr/exec.
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - zabbix-server
+    networks: [zabbix-net]
+    restart: unless-stopped
+
+  # ------------------------- NETBOX ---------------------------------
   nbox-postgres:
     image: postgres:16-alpine
-    container_name: nbox-postgres
-    restart: unless-stopped
     environment:
-      POSTGRES_DB: netbox
-      POSTGRES_USER: netbox
-      POSTGRES_PASSWORD: nboxPassword!
+      POSTGRES_DB: ${NB_DB_NAME:-netbox}
+      POSTGRES_USER: ${NB_DB_USER:-netbox}
+      POSTGRES_PASSWORD: ${NB_DB_PASSWORD:-netbox_pwd}
     volumes:
-      - /docker/netbox/postgres-data:/var/lib/postgresql/data:Z
+      - nb-pgdata:/var/lib/postgresql/data
     networks: [netbox-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NB_DB_USER:-netbox} -d ${NB_DB_NAME:-netbox} -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   nbox-redis:
     image: redis:7-alpine
-    container_name: nbox-redis
-    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
     networks: [netbox-net]
+    restart: unless-stopped
 
   netbox:
-    image: netboxcommunity/netbox:latest
-    container_name: netbox
-    depends_on: [nbox-postgres, nbox-redis]
-    restart: unless-stopped
-    ports:
-      - "8000:8080"                # http://<host>:8000
+    image: lscr.io/linuxserver/netbox:latest
+    depends_on:
+      nbox-postgres:
+        condition: service_healthy
+      nbox-redis:
+        condition: service_started
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Stockholm}
       DB_HOST: nbox-postgres
-      DB_NAME: netbox
-      DB_USER: netbox
-      DB_PASSWORD: nboxPassword!
+      DB_NAME: ${NB_DB_NAME:-netbox}
+      DB_USER: ${NB_DB_USER:-netbox}
+      DB_PASSWORD: ${NB_DB_PASSWORD:-netbox_pwd}
       REDIS_HOST: nbox-redis
-      DB_TIMEOUT: "60"
-      DB_WAIT_DEBUG: "1"
-      SECRET_KEY: 'netbox_secret_key'
+      SECRET_KEY: ${NB_SECRET_KEY}
+      # optional bootstrap of admin user
+      SUPERUSER_NAME: ${NB_SUPERUSER_NAME:-admin}
+      SUPERUSER_EMAIL: ${NB_SUPERUSER_EMAIL:-admin@example.com}
+      SUPERUSER_PASSWORD: ${NB_SUPERUSER_PASSWORD}
     volumes:
-      - /docker/netbox/media:/opt/netbox/netbox/media:Z
-      - /docker/netbox/reports:/opt/netbox/netbox/reports:Z
-      - /docker/netbox/scripts:/opt/netbox/netbox/scripts:Z
+      - nb-config:/config
+    ports:
+      - "8000:8000"
     networks: [netbox-net]
-
-###############################################################################
-# ── ZABBIX STACK ──────────────────────────────────────────────────────────── #
-###############################################################################
-  zbx-postgres:
-    image: postgres:16-alpine
-    container_name: zabbix-postgres
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: zabbix
-      POSTGRES_USER: zabbix_user
-      POSTGRES_PASSWORD: zabbixPassword!
-    volumes:
-      - /docker/zabbix/postgres-data:/var/lib/postgresql/data:Z
-    networks: [zabbix-net]
 
-  zabbix-server:
-    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
-    container_name: zabbix-server
-    restart: unless-stopped
-    depends_on: [zbx-postgres]
-    environment:
-      DB_SERVER_HOST: zabbix-postgres
-      POSTGRES_USER: zabbix_user
-      POSTGRES_PASSWORD: zabbixPassword!
-      POSTGRES_DB: zabbix
-      ZBX_SERVER_NAME: "Zabbix Server"
-    ports:
-      - "10051:10051"              # trapper / active checks
-    networks: [zabbix-net]
+# --------------------------- STORAGE & NETWORKS ------------------------------
+volumes:
+  zbx-pgdata:
+  nb-pgdata:
+  nb-config:
 
-  zabbix-web:
-    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
-    container_name: zabbix-web
-    restart: unless-stopped
-    depends_on: [zabbix-server]
-    environment:
-      DB_SERVER_HOST: zabbix-postgres
-      POSTGRES_USER: zabbix_user
-      POSTGRES_PASSWORD: zabbixPassword!
-      POSTGRES_DB: zabbix
-      ZBX_SERVER_HOST: zabbix-server
-      PHP_TZ: Europe/Stockholm
-    ports:
-      - "8080:8080"                # http://<host>:8080
-    networks: [zabbix-net]
-
-  # Built‑in agent container (monitored via host‑exposed port 10050)
-  zabbix-agent:
-    image: zabbix/zabbix-agent2:latest
-    container_name: zabbix-agent
-    restart: unless-stopped
-    depends_on: [zabbix-server]
-    environment:
-      ZBX_SERVER_HOST: zabbix-server
-    ports:
-      - "10050:10050"              # expose to the host
-    networks: [zabbix-net]
-
-  # Extra agent that sees the HOST OS directly
-  zabbix-agent-host:
-    image: zabbix/zabbix-agent2:latest
-    container_name: zabbix-agent-host
-    restart: unless-stopped
-    network_mode: host             # host networking
-    pid: host
-    privileged: true
-    environment:
-      ZBX_SERVER_HOST: 127.0.0.1
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /proc:/proc:ro
-    # NOTE: no networks: [...] because network_mode: host
-
-###############################################################################
-# ── DOCKER NETWORKS ───────────────────────────────────────────────────────── #
-###############################################################################
 networks:
-  netbox-net: {driver: bridge}
-  zabbix-net: {driver: bridge}
+  zabbix-net:
+  netbox-net:
