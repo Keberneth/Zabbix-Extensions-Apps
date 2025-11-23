@@ -1,0 +1,64 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.0.3 Chrome/140.0.7339.249 Electron/38.7.0 Safari/537.36" version="29.0.3">
+  <diagram id="hld1" name="Network Map HLD">
+    <mxGraphModel dx="5042" dy="722" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="4000" pageHeight="4000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="n1" value="User Browser&#xa;SPA" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="40" y="40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n2" value="Nginx&#xa;Reverse Proxy" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="220" y="40" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n3" value="FastAPI Network Map App&#xa;(main.py + routers)" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="550" y="20" width="220" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="n4" value="Zabbix Server&#xa;ZABBIX_URL" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="440" y="200" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n5" value="NetBox&#xa;NETBOX_URL" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="640" y="200" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n6" value="/opt/network_map&#xa;static + reports" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="-20" y="180" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n7" value="Config + State&#xa;config.py, helpers.py, state.py" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="260" y="200" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n8" value="Workers&#xa;zabbix/netbox/report" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="810" y="180" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n9" value="Report Engine&#xa;report_*.py&#xa;(.xlsx, .csv, .drawio)" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="460" y="380" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="HTTPS" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n1" target="n2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="HTTP /api + static" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n2" target="n3" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="Zabbix API" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n3" target="n4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="NetBox API" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n3" target="n5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="Serve SPA + reports" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n3" target="n6" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="In-memory cache &amp; config" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n3" target="n7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="Background threads" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n3" target="n8" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="Generate reports" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n8" target="n9" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="Write files" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n9" target="n6" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

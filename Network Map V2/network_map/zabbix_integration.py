@@ -8,7 +8,9 @@ from config import ZABBIX_URL, ZABBIX_TOKEN, ENV_COLOR_MAP
 from helpers import classify_env, is_public_ip
 from netbox_integration import fetch_netbox_vms
 from state import get_name_to_vm
+from log import get_logger
 
+logger = get_logger(__name__)
 
 def zabbix_api(method: str, params: Optional[Dict[str, Any]] = None) -> Any:
     payload = {

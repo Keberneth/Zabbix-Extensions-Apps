@@ -3,6 +3,9 @@ import json
 from collections import defaultdict
 from datetime import datetime
 from typing import Dict, Any, List
+from log import get_logger
+
+logger = get_logger(__name__)
 
 import requests
 import ipaddress
@@ -144,7 +147,11 @@ def get_connection_history(itemid: str) -> List[Dict[str, Any]]:
                 all_entries.extend(chunk)
                 continue
             except Exception as e:
-                print(f"[REPORT WARN] Failed to read cache {cache_file}: {e}")
+                logger.warning("Report cache read failed for %s: %s", cache_file, e)
+                logger.exception(
+                    "history.get failed for item %s %s-%s: %s", itemid, chunk_start, chunk_end, e
+                    )
+
 
         chunk_end = chunk_start + HISTORY_CHUNK
         params = {

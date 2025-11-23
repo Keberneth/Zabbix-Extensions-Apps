@@ -9,6 +9,11 @@ from routes_core import router as core_router
 from routes_netbox import router as netbox_router
 from routes_zabbix import router as zabbix_router
 from workers import start_workers
+from log import setup_logging, get_logger  # NEW
+
+# Initialize logging as early as possible
+setup_logging()
+logger = get_logger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -34,4 +39,6 @@ app.include_router(zabbix_router)
 
 @app.on_event("startup")
 def on_startup():
+    logger.info("Starting Network Map application (FastAPI)")
     start_workers()
+    logger.info("Background workers started")
