@@ -31,9 +31,12 @@
         <mxCell id="n9" value="Report Engine&#xa;report_*.py&#xa;(.xlsx, .csv, .drawio)" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
           <mxGeometry x="460" y="380" width="200" height="60" as="geometry" />
         </mxCell>
+
+        <!-- NEW: Logging component -->
         <mxCell id="n10" value="Logging&#xa;log.py&#xa;/opt/network_map/logs" style="shape=rectangle;whiteSpace=wrap;html=1;strokeWidth=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
-          <mxGeometry x="960" y="40" width="200" height="60" as="geometry" />
+          <mxGeometry x="260" y="320" width="200" height="60" as="geometry" />
         </mxCell>
+
         <mxCell id="e1" value="HTTPS" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n1" target="n2" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
@@ -61,12 +64,15 @@
         <mxCell id="e9" value="Write files" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n9" target="n6" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+
+        <!-- NEW: Edges to logging -->
         <mxCell id="e10" value="Application logs" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n3" target="n10" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e11" value="Worker logs" style="endArrow=classic;html=1;strokeWidth=1;" parent="1" source="n8" target="n10" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+
       </root>
     </mxGraphModel>
   </diagram>
