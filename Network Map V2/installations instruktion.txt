@@ -170,3 +170,9 @@ Ingen separat cronjob eller separat `network-map-report.py` behövs längre – 
 - `report_data.py`
 - `report_builders.py`
 - `report_generator.py`
+
+
+# selinux fix
+chcon -R -t httpd_sys_content_t /opt/network_map
+semanage fcontext -a -t httpd_sys_content_t "/opt/network_map(/.*)?"
+restorecon -R /opt/network_map

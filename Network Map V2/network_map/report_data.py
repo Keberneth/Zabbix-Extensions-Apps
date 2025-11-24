@@ -2,7 +2,7 @@ import os
 import json
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from log import get_logger
 
 logger = get_logger(__name__)
@@ -22,7 +22,7 @@ from report_config import (
 _NETBOX_IP_CACHE: Dict[str, Any] = {}
 
 
-def zabbix_api(method: str, params: Dict[str, Any] | None = None) -> Any:
+def zabbix_api(method: str, params: Optional[Dict[str, Any]] = None) -> Any:
     headers = {"Content-Type": "application/json-rpc"}
     payload = {
         "jsonrpc": "2.0",

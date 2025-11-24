@@ -8,7 +8,10 @@ from config import NETBOX_TOKEN, REPORT_DIR
 
 # Keep certificate behaviour as before
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-warnings.simplefilter("ignore", urllib3.exceptions.SubjectAltNameWarning)
+
+SubjectAltNameWarning = getattr(urllib3.exceptions, "SubjectAltNameWarning", None)
+if SubjectAltNameWarning is not None:
+    warnings.simplefilter("ignore", SubjectAltNameWarning)
 
 # Output and cache
 OUTPUT_DIR = REPORT_DIR

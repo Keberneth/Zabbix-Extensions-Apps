@@ -30,5 +30,10 @@ ENV_COLOR_MAP = {
 }
 
 # Keep ignoring certificate warnings as before
+# Keep ignoring certificate warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-warnings.simplefilter("ignore", urllib3.exceptions.SubjectAltNameWarning)
+
+# SubjectAltNameWarning exists only in older urllib3; make it optional
+SubjectAltNameWarning = getattr(urllib3.exceptions, "SubjectAltNameWarning", None)
+if SubjectAltNameWarning is not None:
+    warnings.simplefilter("ignore", SubjectAltNameWarning)
