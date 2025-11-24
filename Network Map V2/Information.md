@@ -61,6 +61,9 @@ Zabbix-templaten “linux-network-connections” och “windows-network-connecti
   - `/opt/network_map/reports`
 - Ingen separat cronjob eller fristående `network-map-report.py` behövs längre.
 
+# Manuellt skapoa rapporter
+python3.12 -c "from report_generator import generate_all_reports; generate_all_reports()"
+
 ## NetBox-integration
 
 - En bakgrundstråd (`netbox_worker`) i `workers.py` uppdaterar NetBox-data (VM:ar och tjänster) återkommande (som standard 1 gång per dygn).

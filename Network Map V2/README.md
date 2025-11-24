@@ -1,6 +1,6 @@
 # Zabbix Network Map
 
-En webbapplikation som visualiserar nätverkstrafik insamlad via Zabbix-agenter och enrichad med data från NetBox. Applikationen genererar även automatiska 30-dagarsrapporter (Excel/CSV/DrawIO).
+En webbapplikation som visualiserar TCP nätverkstrafik insamlad via Zabbix-agenter och enrichad med data från NetBox. Applikationen genererar även automatiska 30-dagarsrapporter (Excel/CSV/DrawIO).
 
 # Länkar
 WEBSITE-URL/api/status

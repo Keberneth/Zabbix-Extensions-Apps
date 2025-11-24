@@ -4,6 +4,42 @@ cytoscape.use(cytoscapeCoseBilkent);
 (function () {
   "use strict";
 
+  const DARK_MODE_KEY = "networkMapDarkMode";
+
+  function loadDarkModePreference() {
+    try {
+      return localStorage.getItem(DARK_MODE_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function saveDarkModePreference(enabled) {
+    try {
+      localStorage.setItem(DARK_MODE_KEY, enabled ? "1" : "0");
+    } catch (e) {
+      // ignore if localStorage is not available
+    }
+  }
+
+  function applyDarkMode(enabled, controls, summary, nbinfo, cyContainer) {
+    if (document.body) {
+      document.body.classList.toggle("dark-mode", enabled);
+    }
+    if (controls) {
+      controls.classList.toggle("dark-mode", enabled);
+    }
+    if (summary) {
+      summary.classList.toggle("dark-mode", enabled);
+    }
+    if (nbinfo) {
+      nbinfo.classList.toggle("dark-mode", enabled);
+    }
+    if (cyContainer) {
+      cyContainer.classList.toggle("dark-mode", enabled);
+    }
+  }
+
   const state = {
     rawData: null,
     cy: null,
@@ -27,6 +63,17 @@ cytoscape.use(cytoscapeCoseBilkent);
 
     const closeNb = document.getElementById("closeNb");
     const minimizeNb = document.getElementById("minimizeNb");
+
+    const controls = document.getElementById("controls");
+    const summary = document.getElementById("summary");
+    const nbinfo = document.getElementById("nbinfo");
+    const cyContainer = document.getElementById("cy");
+
+    // Apply saved dark mode preference on load
+    const initialDarkMode = loadDarkModePreference();
+    if (initialDarkMode) {
+      applyDarkMode(true, controls, summary, nbinfo, cyContainer);
+    }
 
     // Hide host selector row by default (as in original code)
     if (hostFilterRow) {
@@ -108,11 +155,10 @@ cytoscape.use(cytoscapeCoseBilkent);
     btnDownloadReport.onclick = handleDownloadReports;
 
     toggleDarkMode.onclick = () => {
-      document.body.classList.toggle("dark-mode");
-      document.getElementById("controls").classList.toggle("dark-mode");
-      document.getElementById("summary").classList.toggle("dark-mode");
-      document.getElementById("nbinfo").classList.toggle("dark-mode");
-      document.getElementById("cy").classList.toggle("dark-mode");
+      const currentlyEnabled = document.body.classList.contains("dark-mode");
+      const newEnabled = !currentlyEnabled;
+      applyDarkMode(newEnabled, controls, summary, nbinfo, cyContainer);
+      saveDarkModePreference(newEnabled);
     };
 
     fetchNetworkMap();
