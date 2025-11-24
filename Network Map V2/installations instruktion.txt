@@ -177,3 +177,15 @@ Ingen separat cronjob eller separat `network-map-report.py` behövs längre – 
 chcon -R -t httpd_sys_content_t /opt/network_map
 semanage fcontext -a -t httpd_sys_content_t "/opt/network_map(/.*)?"
 restorecon -R /opt/network_map
+
+# Install Python and pip
+python3.12 -m pip install --upgrade pip
+
+python3.12 -m pip install \
+  fastapi \
+  "uvicorn[standard]" \
+  requests \
+  openpyxl \
+  networkx \
+  numpy \
+  scipy
