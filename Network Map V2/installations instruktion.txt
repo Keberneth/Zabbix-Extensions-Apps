@@ -116,12 +116,13 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/opt/network_map
-ExecStart=/usr/bin/env python3.9 -m uvicorn main:app --host 0.0.0.0 --port 8000
+ExecStart=/usr/bin/env python3.12 -m uvicorn main:app --host 0.0.0.0 --port 8000
 Restart=always
 Environment="PYTHONUNBUFFERED=1"
 
 [Install]
 WantedBy=multi-user.target
+
 
 Ladda om systemd, aktivera och starta tjänsten:
 

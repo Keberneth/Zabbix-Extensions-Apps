@@ -1,0 +1,13 @@
+[Unit]
+Description=Zabbix Network Map API
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/network_map
+ExecStart=/usr/bin/env python3.12 -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
