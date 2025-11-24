@@ -2,6 +2,11 @@
 
 En webbapplikation som visualiserar nätverkstrafik insamlad via Zabbix-agenter och enrichad med data från NetBox. Applikationen genererar även automatiska 30-dagarsrapporter (Excel/CSV/DrawIO).
 
+# Länkar
+WEBSITE-URL/api/status
+WEBSITE-URL/api/network_map
+WEBSITE-URL/logs.html
+
 ## Arkitektur
 
 - Backend:
