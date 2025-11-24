@@ -62,7 +62,7 @@ Zabbix-templaten “linux-network-connections” och “windows-network-connecti
 - Ingen separat cronjob eller fristående `network-map-report.py` behövs längre.
 
 # Manuellt skapoa rapporter
-python3.12 -c "from report_generator import generate_all_reports; generate_all_reports()"
+sudo -u nginx python3.12 -c "from report_generator import generate_all_reports; generate_all_reports()"
 
 ## NetBox-integration
 
