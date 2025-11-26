@@ -25,6 +25,8 @@ They have a conf file and script that need to be added to the servers.
 
 Script also send error to zabbix if it fails. Use a Zabbix trapper tempalte with the key and host name in the script and change to the correct IP.
 
+For this to work Zabbix Sender needs to be installed on the host running the scripts and template "Zabbix to Netbox Script Trapper" needs to be on the server reciving send
+
 # Configure these to match your Zabbix setup
 ZABBIX_SENDER = os.getenv("ZABBIX_SENDER", "/usr/bin/zabbix_sender")
 ZABBIX_SERVER = os.getenv("ZABBIX_SERVER", "127.0.0.1")          # Zabbix server address

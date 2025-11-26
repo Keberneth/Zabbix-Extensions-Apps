@@ -1,0 +1,34 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    - uuid: 4bc4a72dc6da474e82fdce3a048ce538
+      template: 'Zabbix to Netbox Script Trapper'
+      name: 'Zabbix to Netbox Script Trapper'
+      vendor:
+        name: Keberneth
+        version: 7.0-0-0
+      groups:
+        - name: Templates
+      items:
+        - uuid: d6d383b3efc24fcdbc29858cf68fcdb9
+          name: 'Zabbix to Netbox Sync Status'
+          type: TRAP
+          key: netbox.sync.status
+          delay: '0'
+          triggers:
+            - uuid: 3089a45cd6614d1582aeab8bf935b157
+              expression: 'last(/Zabbix to Netbox Script Trapper/netbox.sync.status)=0'
+              name: 'Zabbix to Netbox Sync Failed'
+              priority: AVERAGE
+  graphs:
+    - uuid: fd8425030c3c44c6800e753c32255654
+      name: 'Zabbix to Netbox history'
+      graph_items:
+        - color: 199C0D
+          calc_fnc: ALL
+          item:
+            host: 'Zabbix to Netbox Script Trapper'
+            key: netbox.sync.status
