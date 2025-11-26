@@ -76,7 +76,6 @@ EOL_API_BASE = "https://endoflife.date/api"
 
 # Zabbix status reporting (for trigger)
 
-
 # Configure these to match your Zabbix setup
 ZABBIX_SENDER = os.getenv("ZABBIX_SENDER", "/usr/bin/zabbix_sender")
 ZABBIX_SERVER = os.getenv("ZABBIX_SERVER", "127.0.0.1")          # Zabbix server address
