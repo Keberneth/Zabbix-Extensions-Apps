@@ -1,0 +1,27 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 9f32c6e8e1fa4fcbbbd3a506935f3e09
+      name: 'Iver Templates'
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    - uuid: aa1f987eaa9f4e6b989a78bf2c293492
+      template: 'Windows Service Listning Port Zabbix Agent Active'
+      name: 'Windows Service Listning Port Zabbix Agent Active'
+      vendor:
+        name: Iver
+        version: 7.0-0-0
+      groups:
+        - name: 'Iver Templates'
+        - name: Templates
+      items:
+        - uuid: 1af87cf81dbe40c5b361597d9171bfee
+          name: 'Listening Services JSON'
+          type: ZABBIX_ACTIVE
+          key: service.listening.port
+          delay: 1d
+          history: 7d
+          value_type: TEXT
+          trends: '0'
+          timeout: 45s
