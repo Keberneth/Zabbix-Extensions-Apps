@@ -17,7 +17,7 @@ zabbix_export:
           - Utilization formula: 'pused = 100 - 100 * (available / total - free + available)'
         - The FS utilization chart, derived from graph prototypes, reflects FS reserved space as the difference between used and available space from the total volume.
       vendor:
-        name: Keberneth
+        name: Zabbix - Zabbix Community - Keberneth mod
         version: 7.0-2-2
       groups:
         - name: Templates
