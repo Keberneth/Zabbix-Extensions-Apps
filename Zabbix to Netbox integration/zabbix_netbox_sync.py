@@ -25,15 +25,21 @@ import urllib3
 # ---------------------------------------------------------------------------
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-warnings.simplefilter("ignore", urllib3.exceptions.SubjectAltNameWarning)
 
-# Zabbix
-ZABBIX_URL = os.getenv("ZABBIX_URL", "https://zabbix.DOMAIN.se/api_jsonrpc.php")
-ZABBIX_TOKEN = os.getenv("ZABBIX_TOKEN")  # REQUIRED
+if hasattr(urllib3.exceptions, "SubjectAltNameWarning"):
+    warnings.simplefilter("ignore", urllib3.exceptions.SubjectAltNameWarning)
 
-# NetBox
-NETBOX_URL = os.getenv("NETBOX_URL", "https://netbox.DOMAIN.se")
-NETBOX_TOKEN = os.getenv("NETBOX_TOKEN")  # REQUIRED
+# Hardcoded fallback values (used ONLY if env vars absent)
+HARDCODED_ZABBIX_TOKEN = "REPLACE_ME"
+HARDCODED_NETBOX_TOKEN = "REPLACE_ME"
+HARDCODED_ZABBIX_URL   = "https://zabbix.DOMAIN.se/api_jsonrpc.php"
+HARDCODED_NETBOX_URL   = "https://netbox.DOMAIN.se"
+
+# Prefer environment variables but fallback to hardcoded values
+ZABBIX_TOKEN = os.getenv("ZABBIX_TOKEN", HARDCODED_ZABBIX_TOKEN)
+NETBOX_TOKEN = os.getenv("NETBOX_TOKEN", HARDCODED_NETBOX_TOKEN)
+ZABBIX_URL   = os.getenv("ZABBIX_URL", HARDCODED_ZABBIX_URL)
+NETBOX_URL   = os.getenv("NETBOX_URL", HARDCODED_NETBOX_URL)
 
 # SSL verification (set VERIFY_SSL=false in env if you must disable it)
 VERIFY_SSL = os.getenv("VERIFY_SSL", "true").lower() == "true"
@@ -548,9 +554,7 @@ def parse_os_vendor_and_version(os_string: str):
 
     # Windows Server
     if "windows server" in os_lower:
-        match = re.search(
-            r"windows server.*?\b(2003|2008|2012|2016|2019|2022|2025)\b", os_lower
-        )
+        match = re.search(r"windows server.*?\b(\d{4})\b", os_lower)
         if match:
             return "windows-server", match.group(1)
         return "windows-server", None
