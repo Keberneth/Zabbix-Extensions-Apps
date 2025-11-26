@@ -16,16 +16,30 @@ import json
 import math
 import re
 import warnings
+import sys
+import subprocess
+import logging
 
 import requests
 import urllib3
 
-# ---------------------------------------------------------------------------
+# Logging
+LOG_FILE = "/var/log/zabbix_netbox_sync.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+
 # Configuration
-# ---------------------------------------------------------------------------
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# urllib3 v2 removed SubjectAltNameWarning; guard safely
 if hasattr(urllib3.exceptions, "SubjectAltNameWarning"):
     warnings.simplefilter("ignore", urllib3.exceptions.SubjectAltNameWarning)
 
@@ -58,20 +72,70 @@ SERVICES_ENDPOINT = f"{NETBOX_URL}/api/ipam/services/"
 # End-of-life base URL
 EOL_API_BASE = "https://endoflife.date/api"
 
-# ---------------------------------------------------------------------------
+
+
+# Zabbix status reporting (for trigger)
+
+
+# Configure these to match your Zabbix setup
+ZABBIX_SENDER = os.getenv("ZABBIX_SENDER", "/usr/bin/zabbix_sender")
+ZABBIX_SERVER = os.getenv("ZABBIX_SERVER", "127.0.0.1")          # Zabbix server address
+ZABBIX_HOST   = os.getenv("ZABBIX_HOST", "netbox-sync-host")     # Host name in Zabbix
+ZABBIX_KEY    = os.getenv("ZABBIX_KEY", "netbox.sync.status")    # Trapper item key
+
+
+def report_status_to_zabbix(success: bool):
+    """
+    Send 1 (success) or 0 (failure) to a Zabbix trapper item via zabbix_sender.
+    Does not raise if zabbix_sender fails – only logs a warning.
+    """
+    value = "1" if success else "0"
+    cmd = [
+        ZABBIX_SENDER,
+        "-z", ZABBIX_SERVER,
+        "-s", ZABBIX_HOST,
+        "-k", ZABBIX_KEY,
+        "-o", value,
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            logging.warning(
+                "zabbix_sender failed (rc=%s): %s %s",
+                result.returncode,
+                result.stdout.strip(),
+                result.stderr.strip(),
+            )
+        else:
+            logging.info("Reported status=%s to Zabbix via zabbix_sender", value)
+    except FileNotFoundError:
+        logging.warning(
+            "zabbix_sender not found at %s; cannot report status to Zabbix",
+            ZABBIX_SENDER,
+        )
+    except Exception as exc:
+        logging.warning("Failed to report status to Zabbix: %s", exc)
+
+
+
 # Common helpers
-# ---------------------------------------------------------------------------
 
 
 def require_tokens():
     missing = []
     if not ZABBIX_TOKEN:
-        missing.append("ZABBIX_TOKEN")
+        missing.append("ZABBIX_TOKEN (env or hardcoded)")
     if not NETBOX_TOKEN:
-        missing.append("NETBOX_TOKEN")
+        missing.append("NETBOX_TOKEN (env or hardcoded)")
     if missing:
         raise RuntimeError(
-            f"Missing required environment variable(s): {', '.join(missing)}"
+            f"Missing required credentials: {', '.join(missing)}"
         )
 
 
@@ -89,9 +153,8 @@ def sanitize_filename(name):
     return re.sub(r'[\\/*?:"<>|]', "_", name)
 
 
-# ---------------------------------------------------------------------------
+
 # Zabbix helpers
-# ---------------------------------------------------------------------------
 
 
 def zabbix_api_request(method, params):
@@ -202,13 +265,13 @@ def get_disk_info_linux(host_id):
     result = zabbix_api_request("item.get", params)
 
     if not result:
-        print(f"[WARN] No disk data found for host ID: {host_id}")
+        logging.warning("No disk data found for host ID: %s", host_id)
         return disk_info
 
     for item in result:
         key = item["key_"]
         value = item.get("lastvalue", "N/A")
-        match = re.search(r"vfs\\.file\\.contents\\[/sys/block/(.*?)/size\\]", key)
+        match = re.search(r"vfs\.file\.contents\[/sys/block/(.*?)/size\]", key)
         if match:
             disk_label = match.group(1)
             disk_size_gb = convert_to_gb(value)
@@ -238,17 +301,19 @@ def get_listening_services_from_zabbix(host_id):
         try:
             return json.loads(item.get("lastvalue", "[]"))
         except json.JSONDecodeError:
-            print(
-                f"[WARN] host_id={host_id}: item '{item_name}' lastvalue is not valid JSON"
+            logging.warning(
+                "host_id=%s: item '%s' lastvalue is not valid JSON",
+                host_id,
+                item_name,
             )
             return []
     # Nothing found
     return []
 
 
-# ---------------------------------------------------------------------------
+
 # NetBox helpers
-# ---------------------------------------------------------------------------
+
 
 HEADERS = {
     "Authorization": f"Token {NETBOX_TOKEN}" if NETBOX_TOKEN else "",
@@ -279,7 +344,7 @@ def nb_delete(url):
     resp = requests.delete(url, headers=HEADERS, verify=VERIFY_SSL)
     # NetBox returns 204 on successful delete
     if resp.status_code not in (204, 404):
-        print(f"[WARN] DELETE {url} → HTTP {resp.status_code}: {resp.text}")
+        logging.warning("DELETE %s → HTTP %s: %s", url, resp.status_code, resp.text)
 
 
 def find_vm_by_substring(substring):
@@ -290,10 +355,10 @@ def find_vm_by_substring(substring):
     if len(results) == 1:
         return results[0]
     elif len(results) > 1:
-        print(f"[WARN] Multiple VMs found matching '{substring}'. Skipping.")
+        logging.warning("Multiple VMs found matching '%s'. Skipping.", substring)
         return None
     else:
-        print(f"[WARN] No VM found matching '{substring}'.")
+        logging.warning("No VM found matching '%s'.", substring)
         return None
 
 
@@ -321,7 +386,7 @@ def _norm_str(val, field, port):
     if isinstance(val, str):
         return val.strip()
     if val not in (None, "", 0, False, True):
-        print(f"[WARN] Port {port}: ignoring non-string {field}={val!r}")
+        logging.warning("Port %s: ignoring non-string %s=%r", port, field, val)
     return ""
 
 
@@ -336,18 +401,18 @@ def create_service(vm_id, ip_id, port, name, description):
     if ip_id:
         payload["ipaddresses"] = [ip_id]
     nb_post(SERVICES_ENDPOINT, payload)
-    print(f"[CREATED] Service {name} TCP/{port}")
+    logging.info("CREATED service %s TCP/%s", name, port)
 
 
 def update_service(svc_id, name, description):
     payload = {"name": name, "description": description}
     nb_patch(f"{SERVICES_ENDPOINT}{svc_id}/", payload)
-    print(f"[UPDATED] Service id={svc_id}: {name}")
+    logging.info("UPDATED service id=%s: %s", svc_id, name)
 
 
 def delete_service(svc_id, port, name):
     nb_delete(f"{SERVICES_ENDPOINT}{svc_id}/")
-    print(f"[REMOVED] Service id={svc_id} TCP/{port}: {name}")
+    logging.info("REMOVED service id=%s TCP/%s: %s", svc_id, port, name)
 
 
 def update_services_for_vm(vm, services_entries):
@@ -360,14 +425,17 @@ def update_services_for_vm(vm, services_entries):
     existing = list_existing_services(vm_id)  # {port:int -> service}
 
     if not services_entries:
-        print(f"[INFO] {hostname}: no listening services entries; existing services may be pruned.")
+        logging.info(
+            "%s: no listening services entries; existing services may be pruned.",
+            hostname,
+        )
     reported_ports = set()
 
     for e in services_entries:
         try:
             port = int(e.get("Port") or 0)
         except Exception:
-            print(f"[WARN] Bad port value {e.get('Port')!r}, skipping entry")
+            logging.warning("Bad port value %r, skipping entry", e.get("Port"))
             continue
         if not port:
             continue
@@ -382,7 +450,7 @@ def update_services_for_vm(vm, services_entries):
             name = process
             desc = desc or f"{process} listening on port {port}"
         else:
-            print(f"[SKIP] Port {port}: no usable name (svc/process missing)")
+            logging.info("SKIP port %s: no usable name (svc/process missing)", port)
             continue
 
         if not desc:
@@ -395,7 +463,7 @@ def update_services_for_vm(vm, services_entries):
             if svc["name"] != name or (svc.get("description") or "") != desc:
                 update_service(svc["id"], name, desc)
             else:
-                print(f"[OK] {hostname}: TCP/{port} already correct")
+                logging.info("%s: TCP/%s already correct", hostname, port)
         else:
             create_service(vm_id, ip_id, port, name, desc)
 
@@ -415,15 +483,16 @@ def get_disks_for_vm(vm_id):
 def bulk_create_disks(disks_to_create):
     if not disks_to_create:
         return
-    print(f"[INFO] Creating {len(disks_to_create)} new disk(s) in NetBox...")
+    logging.info("Creating %s new disk(s) in NetBox...", len(disks_to_create))
     nb_post(VDISK_ENDPOINT, disks_to_create)
 
 
 def bulk_update_disks(disks_to_update):
     if not disks_to_update:
         return
-    print(f"[INFO] Updating {len(disks_to_update)} disk(s) in NetBox...")
+    logging.info("Updating %s disk(s) in NetBox...", len(disks_to_update))
     nb_patch(VDISK_ENDPOINT, disks_to_update)
+
 
 def update_disks_for_vm(vm, disk_map):
     """
@@ -450,7 +519,11 @@ def update_disks_for_vm(vm, disk_map):
             if current_size != size:
                 disks_to_update.append({"id": disk_id, "size": size})
             else:
-                print(f"[OK] Disk '{disk_name}' on VM '{vm_name}' is already correct.")
+                logging.info(
+                    "Disk '%s' on VM '%s' is already correct.",
+                    disk_name,
+                    vm_name,
+                )
         else:
             disks_to_create.append(
                 {
@@ -473,7 +546,13 @@ def update_disks_for_vm(vm, disk_map):
         disk_id = disk["id"]
         disk_name = disk["name"]
         nb_delete(f"{VDISK_ENDPOINT}{disk_id}/")
-        print(f"[REMOVED] Disk '{disk_name}' (id={disk_id}) from VM '{vm_name}' – no longer in Zabbix.")
+        logging.info(
+            "REMOVED disk '%s' (id=%s) from VM '%s' – no longer in Zabbix.",
+            disk_name,
+            disk_id,
+            vm_name,
+        )
+
 
 def update_or_create_vm_resources(vm_record, new_memory, new_vcpus):
     """
@@ -499,23 +578,24 @@ def update_or_create_vm_resources(vm_record, new_memory, new_vcpus):
     if (current_memory is None or current_memory == 0) or (
         current_vcpus is None or current_vcpus == 0
     ):
-        print(f"[INFO] Updating VM ID {vm_id} with missing resource fields.")
+        logging.info("Updating VM ID %s with missing resource fields.", vm_id)
     elif current_memory == new_memory and current_vcpus == new_vcpus:
-        print(
-            f"[OK] VM ID {vm_id}: resources already correct "
-            f"(memory={current_memory}, vcpus={current_vcpus})."
+        logging.info(
+            "VM ID %s: resources already correct (memory=%s, vcpus=%s).",
+            vm_id,
+            current_memory,
+            current_vcpus,
         )
         return
 
     nb_patch(f"{VM_ENDPOINT}{vm_id}/", payload)
-    print(
-        f"[UPDATED] VM ID {vm_id}: memory={new_memory} MB, vcpus={new_vcpus}"
+    logging.info(
+        "UPDATED VM ID %s: memory=%s MB, vcpus=%s", vm_id, new_memory, new_vcpus
     )
 
 
-# ---------------------------------------------------------------------------
+
 # OS + EOL helpers
-# ---------------------------------------------------------------------------
 
 
 def parse_os_vendor_and_version(os_string: str):
@@ -552,7 +632,7 @@ def parse_os_vendor_and_version(os_string: str):
             return "redhat", major_version
         return "redhat", None
 
-    # Windows Server
+    # Windows Server (future-proof: any 4-digit year)
     if "windows server" in os_lower:
         match = re.search(r"windows server.*?\b(\d{4})\b", os_lower)
         if match:
@@ -594,25 +674,31 @@ def get_os_eol(os_name: str, os_version: str) -> str:
     try:
         if os_name == "sles":
             url = f"{EOL_API_BASE}/sles.json"
-            resp = requests.get(url, headers={"Accept": "application/json"}, verify=VERIFY_SSL)
+            resp = requests.get(
+                url, headers={"Accept": "application/json"}, verify=VERIFY_SSL
+            )
             resp.raise_for_status()
             data = resp.json()
             for entry in data:
                 if entry.get("cycle") == os_version:
                     eol = entry.get("eol")
                     return "Still Supported" if not eol else eol
-            print(f"[WARN] SLES version {os_version} not found in EOL data.")
+            logging.warning("SLES version %s not found in EOL data.", os_version)
             return "Unknown"
 
         else:
             url = f"{EOL_API_BASE}/{os_name}/{os_version}.json"
-            resp = requests.get(url, headers={"Accept": "application/json"}, verify=VERIFY_SSL)
+            resp = requests.get(
+                url, headers={"Accept": "application/json"}, verify=VERIFY_SSL
+            )
             resp.raise_for_status()
             data = resp.json()
             return data.get("eol", "Unknown")
 
     except Exception as exc:
-        print(f"[WARN] Error fetching EOL info for {os_name} {os_version}: {exc}")
+        logging.warning(
+            "Error fetching EOL info for %s %s: %s", os_name, os_version, exc
+        )
         return "Unknown"
 
 
@@ -622,16 +708,21 @@ def update_vm_os(vm_record, new_os, os_eol):
 
     # If the fields are not present at all, assume they are not defined in NetBox
     if "operating_system" not in cf or "operating_system_EOL" not in cf:
-        print(f"[WARN] VM ID {vm_id}: OS/EOL custom fields missing; skipping OS update.")
+        logging.warning(
+            "VM ID %s: OS/EOL custom fields missing; skipping OS update.",
+            vm_id,
+        )
         return
 
     current_os = cf.get("operating_system")
     current_eol = cf.get("operating_system_EOL")
 
     if current_os == new_os and current_eol == os_eol:
-        print(
-            f"[OK] VM ID {vm_id}: OS/EOL already correct "
-            f"(OS='{current_os}', EOL='{current_eol}')."
+        logging.info(
+            "VM ID %s: OS/EOL already correct (OS='%s', EOL='%s').",
+            vm_id,
+            current_os,
+            current_eol,
         )
         return
 
@@ -643,14 +734,16 @@ def update_vm_os(vm_record, new_os, os_eol):
     }
 
     nb_patch(f"{VM_ENDPOINT}{vm_id}/", payload)
-    print(
-        f"[UPDATED] VM ID {vm_id}: operating_system='{new_os}', "
-        f"operating_system_EOL='{os_eol}'"
+    logging.info(
+        "UPDATED VM ID %s: operating_system='%s', operating_system_EOL='%s'",
+        vm_id,
+        new_os,
+        os_eol,
     )
 
-# ---------------------------------------------------------------------------
+
+
 # Host inventory from Zabbix
-# ---------------------------------------------------------------------------
 
 
 def collect_host_inventory():
@@ -719,15 +812,14 @@ def collect_host_inventory():
             }
 
 
-# ---------------------------------------------------------------------------
+
 # Orchestration
-# ---------------------------------------------------------------------------
 
 
 def process_host(host_inv):
     host_name = host_inv["host"]
     host_id = host_inv["host_id"]
-    print(f"\n=== Processing host {host_name} (ID {host_id}) ===")
+    logging.info("=== Processing host %s (ID %s) ===", host_name, host_id)
 
     vm = find_vm_by_substring(host_name)
     if not vm:
@@ -737,7 +829,12 @@ def process_host(host_inv):
     os_value = host_inv.get("operating_system")
     os_vendor, os_version = parse_os_vendor_and_version(os_value or "")
     os_eol = get_os_eol(os_vendor, os_version) if os_vendor else "Unknown"
-    update_vm_os(vm, os_value, os_eol)
+    try:
+        update_vm_os(vm, os_value, os_eol)
+    except Exception as exc:
+        logging.warning(
+            "%s: failed to update OS/EOL in NetBox: %s", host_name, exc
+        )
 
     # 2) Resources (memory / vcpus)
     total_memory_gb = host_inv.get("total_memory_gb")
@@ -758,9 +855,11 @@ def process_host(host_inv):
     if new_memory_mb and new_vcpus:
         update_or_create_vm_resources(vm, new_memory_mb, new_vcpus)
     else:
-        print(
-            f"[WARN] Skipping resource update for {host_name}: "
-            f"memory={total_memory_gb}, cores={cores}"
+        logging.warning(
+            "Skipping resource update for %s: memory=%s, cores=%s",
+            host_name,
+            total_memory_gb,
+            cores,
         )
 
     # 3) Disks
@@ -768,24 +867,44 @@ def process_host(host_inv):
     if disks:
         update_disks_for_vm(vm, disks)
     else:
-        print(f"[INFO] {host_name}: no disk data to sync.")
+        logging.info("%s: no disk data to sync.", host_name)
 
     # 4) Listening services
     services_entries = get_listening_services_from_zabbix(host_id)
     if services_entries:
         update_services_for_vm(vm, services_entries)
     else:
-        print(f"[INFO] {host_name}: no listening-services JSON found in Zabbix.")
+        logging.info(
+            "%s: no listening-services JSON found in Zabbix.", host_name
+        )
 
 
-def main():
+def main() -> int:
     require_tokens()
+    overall_ok = True
+
     for host_inv in collect_host_inventory():
         try:
             process_host(host_inv)
         except Exception as exc:
-            print(f"[ERROR] Failed processing {host_inv.get('host')}: {exc}")
+            logging.error("Failed processing %s: %s", host_inv.get("host"), exc)
+            overall_ok = False
+
+    return 0 if overall_ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    exit_code = 1
+    try:
+        exit_code = main()
+    except Exception as exc:
+        logging.error("Fatal error in main(): %s", exc)
+        exit_code = 1
+    finally:
+        # Report to Zabbix: 1 = success, 0 = failure
+        try:
+            report_status_to_zabbix(exit_code == 0)
+        except Exception as exc:
+            logging.warning("Error while reporting status to Zabbix: %s", exc)
+
+    sys.exit(exit_code)

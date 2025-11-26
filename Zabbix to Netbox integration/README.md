@@ -21,3 +21,12 @@ To make the Linux OS update and EOL work the template "Linux Monitoring Zabbix A
 
 For Listning port services to be updated on Virtual Machines in Netbox, Zabbix template "Windows Service Listning Port Zabbix Agent Active" and Linux Service Listning Port Zabbix Agent Active" need to be used.
 They have a conf file and script that need to be added to the servers. 
+
+
+Script also send error to zabbix if it fails. Use a Zabbix trapper tempalte with the key and host name in the script and change to the correct IP.
+
+# Configure these to match your Zabbix setup
+ZABBIX_SENDER = os.getenv("ZABBIX_SENDER", "/usr/bin/zabbix_sender")
+ZABBIX_SERVER = os.getenv("ZABBIX_SERVER", "127.0.0.1")          # Zabbix server address
+ZABBIX_HOST   = os.getenv("ZABBIX_HOST", "netbox-sync-host")     # Host name in Zabbix
+ZABBIX_KEY    = os.getenv("ZABBIX_KEY", "netbox.sync.status")    # Trapper item key
