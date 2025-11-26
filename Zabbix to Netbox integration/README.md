@@ -1,0 +1,23 @@
+The script will update the following on Netbox Virtual Machines if the hostname is the same in Zabbix as ini Netbox.
+CPU
+RAM
+Disks
+Service with listning TCP port
+
+If Virtual Machine custom fields are created:
+Operating System
+End of life date
+
+To make the OS update and EOL date to be published on the virtual machine in Netbox the following custom fields need to be created in Netbox on Virtual Machines.
+
+operating_system
+operating_system_EOL
+
+and the host running the script need to be able to access the website endoflife.date
+
+Run the integration script with a cronjob as often as you want.
+
+To make the Linux OS update and EOL work the template "Linux Monitoring Zabbix Agent Active" need to be used. The discovery for OS PRETTY NAME is needed.
+
+For Listning port services to be updated on Virtual Machines in Netbox, Zabbix template "Windows Service Listning Port Zabbix Agent Active" and Linux Service Listning Port Zabbix Agent Active" need to be used.
+They have a conf file and script that need to be added to the servers. 
