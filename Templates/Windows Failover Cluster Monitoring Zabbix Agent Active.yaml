@@ -1,0 +1,545 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    - uuid: 66c1d91489b0493a8e8032a228d3e438
+      template: 'Windows Failover Cluster Monitoring Zabbix Agent Active'
+      name: 'Windows Failover Cluster Monitoring Zabbix Agent Active'
+      vendor:
+        name: Keberneth
+        version: 7.0-0-0
+      groups:
+        - name: Templates
+      items:
+        - uuid: c663c45e53c445c89b266e978483f106
+          name: 'WFC Cluster service started on a node (ID1009)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1009$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // drop if the Security ID line (possibly indented) is SYSTEM or NT AUTHORITY\SYSTEM
+                  if (/^\s*Security ID:\s*(?:SYSTEM|NT AUTHORITY\\SYSTEM|NT AUTHORITY\\LOCAL SERVICE|NT AUTHORITY\\NETWORK SERVICE|NT AUTHORITY\\AUTHENTICATED|ansible|ad\\ansible)\s*$/im.test(value)) {
+                    return null; // null ⇒ discard entire event
+                  }
+                  return value; // otherwise keep the full log
+          triggers:
+            - uuid: 4a8a278280a54852a032a62025ae20a0
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1009$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1009$],600s)=0'
+              name: 'WFC Cluster service started on a node (ID1009)'
+              priority: INFO
+        - uuid: aaea1cd2f9ca4db98d53c23171228859
+          name: 'WFC Cluster resource failed (ID1069)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1069$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 02121a9a76ad438c95a4718658bf436a
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1069$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1069$],600s)=0'
+              name: 'WFC Cluster resource failed (ID1069)'
+              priority: HIGH
+        - uuid: fd85a4471d464d5a8b1ece97ac7f95fd
+          name: 'WFC Cluster resource brought online (ID1070)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1070$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 44a470034bc1488fbf9f822500a1d9d2
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1070$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1070$],600s)=0'
+              name: 'WFC Cluster resource brought online (ID1070)'
+              priority: INFO
+        - uuid: 4b22ac88a97945f585572c979762b61d
+          name: 'WFC Cluster resource failed; failover threshold reached (ID1077)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1077$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 922b739b83be44028669c1c57ecddcce
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1077$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1077$],600s)=0'
+              name: 'WFC Resource failover threshold reached (ID1077)'
+              priority: DISASTER
+        - uuid: 780c9117feb844e08abbf81d2670ca16
+          name: 'WFC Node failed to communicate (ID1129)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1129$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 7c029f5d8db04be3a2e02cb04b01a6a4
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1129$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1129$],600s)=0'
+              name: 'WFC Node failed to communicate (ID1129)'
+              priority: HIGH
+        - uuid: a5f112ce45c744beb62d2a7609a1da53
+          name: 'WFC Cluster network partition detected (ID1130)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1130$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 9537a19bb17946a8bf29d850cc1ed583
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1130$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1130$],600s)=0'
+              name: 'WFC Cluster network partition detected (ID1130)'
+              priority: HIGH
+        - uuid: 4fe6d489899f4077b94775304325411e
+          name: 'WFC Network connection restored (ID1131)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1131$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 37c43909665c411f960b168eb08d27bf
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1131$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1131$],600s)=0'
+              name: 'WFC Network connection restored (ID1131)'
+              priority: INFO
+        - uuid: 15da0498b92e43c082c6f9dc841a97a5
+          name: 'WFC A node was removed (heartbeat loss/eviction) (ID1135)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1135$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 7f7d7b32651a458a8e084ce94cd43c41
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1135$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1135$],600s)=0'
+              name: 'WFC Node removed from cluster (ID1135)'
+              priority: HIGH
+        - uuid: 7761a9e0bcd9489d9f02e7d51331381b
+          name: 'WFC Node added to the cluster (ID1137)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1137$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: ee05751104264647b29d1238584a2672
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1137$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1137$],600s)=0'
+              name: 'WFC Node added to the cluster (ID1137)'
+              priority: INFO
+        - uuid: ed7eeeb595a846ab8250cc8a53c838c3
+          name: 'WFC Cluster service lost quorum and stopped (ID1176)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1176$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: efa4c3b36f5646669fb99cbe8d2ed1bf
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1176$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1176$],600s)=0'
+              name: 'WFC Cluster service lost quorum and stopped (ID1176)'
+              priority: HIGH
+        - uuid: 104268ce08284dc3ad78b8a31bffc255
+          name: 'WFC Cluster formed / node gained quorum (ID1177)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1177$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 98e52f58ec5a471a8a332944ce548b75
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1177$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1177$],600s)=0'
+              name: 'WFC Cluster formed / node gained quorum (ID1177)'
+              priority: INFO
+        - uuid: e72c6b015f324a0d966ac0024773d09e
+          name: 'WFC Cluster group failed (ID1205)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1205$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 482d98a6b6bf48bbab2c8171fba8921b
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1205$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1205$],600s)=0'
+              name: 'WFC Cluster group failed (ID1205)'
+              priority: HIGH
+        - uuid: 5245c581fde34a3480262474e0fcfc69
+          name: 'WFC Cluster group moved (ID1207)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1207$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: e7d73166816d44928ad3ac1de7e04dce
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1207$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1207$],600s)=0'
+              name: 'WFC Cluster group moved (ID1207)'
+              priority: WARNING
+              description: |
+                https://learn.microsoft.com/en-us/windows-server/failover-clustering/prestage-cluster-adds
+                
+                https://learn.microsoft.com/en-us/windows-server/failover-clustering/configure-failover-cluster-accounts
+        - uuid: e1831bbe4e58409fb09fbd3ad110c273
+          name: 'WFC Quorum resource failed (ID1561)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1561$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 7c2b7916481a49888a8a5f2730c14370
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1561$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1561$],600s)=0'
+              name: 'WFC Quorum resource failed (ID1561)'
+              priority: HIGH
+        - uuid: 24408b6e43084ff0ae540669f9701fa3
+          name: 'WFC File share witness failed (ID1569)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1569$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: d7dba092193b4edabf8800a93545e895
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1569$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1569$],600s)=0'
+              name: 'WFC File share witness failed (ID1569)'
+              priority: HIGH
+        - uuid: d78cacc2933343939993524fb8b48b4b
+          name: 'WFC Disk witness lost (ID1573)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^1573$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: d3ebfef56fde4e6592f184babfc699ea
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1573$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^1573$],600s)=0'
+              name: 'WFC Disk witness lost (ID1573)'
+              priority: HIGH
+        - uuid: 7e0da7cff2ec4e0496877b95d08cc1d5
+          name: 'WFC CSV no longer available (ID5120)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^5120$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: 3b90233dd26b4e78ae2bfe492ada8fe3
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^5120$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^5120$],600s)=0'
+              name: 'WFC CSV no longer available (ID5120)'
+              priority: DISASTER
+        - uuid: 44a3fb556eab4ea0a348654ddfa84674
+          name: 'WFC CSV entered direct mode (ID5140)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^5140$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: b6976c52431e45d3be7dd6a481bb4dc4
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^5140$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^5140$],600s)=0'
+              name: 'WFC CSV entered direct mode (ID5140)'
+              priority: INFO
+        - uuid: cdbe12b3290649b6b3074d44582bc34d
+          name: 'WFC CSV entered redirected mode (ID5142)'
+          type: ZABBIX_ACTIVE
+          key: 'eventlog[System,,,,^5142$]'
+          delay: 5m
+          value_type: LOG
+          trends: '0'
+          triggers:
+            - uuid: d162d52938304190ac6942a3b4eedb8c
+              expression: 'logseverity(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^5142$])>1 and nodata(/Windows Failover Cluster Monitoring Zabbix Agent Active/eventlog[System,,,,^5142$],600s)=0'
+              name: 'WFC CSV entered redirected mode (ID5142)'
+              priority: AVERAGE
+        - uuid: 876dc64db85149a6a1b2d54f8d5c9ad5
+          name: 'WFC Cluster group owner node'
+          type: DEPENDENT
+          key: wfc.cluster.group_owner
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ClusterGroupOwnerNode
+          master_item:
+            key: wfc.status
+        - uuid: 2b2fb0e44c7942179f78d94e48b4cb09
+          name: 'WFC Cluster name'
+          type: DEPENDENT
+          key: wfc.cluster.name
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ClusterName
+          master_item:
+            key: wfc.status
+        - uuid: 7f6722d7e52245058a2a66d74f10fa30
+          name: 'WFC Quorum resource'
+          type: DEPENDENT
+          key: wfc.quorum.resource
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Quorum.QuorumResource
+          master_item:
+            key: wfc.status
+        - uuid: 54b91072c9a64e2ebd65dc91bd2dd9bb
+          name: 'WFC Cluster Data JSON'
+          type: ZABBIX_ACTIVE
+          key: wfc.status
+          delay: 5m
+          value_type: TEXT
+          trends: '0'
+          timeout: 20s
+        - uuid: 6294b324768643409f7c0f2f7f7d3860
+          name: 'WFC Witness dynamic weight'
+          type: DEPENDENT
+          key: wfc.witness.dynamic_weight
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Witness.WitnessDynamicWeight
+          master_item:
+            key: wfc.status
+        - uuid: 20aa46ecea0045ed88e9c23bc7da7fef
+          name: 'WFC Witness in use'
+          type: DEPENDENT
+          key: wfc.witness.inuse
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Witness.WitnessInUse
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value && value !== "null" && value !== "undefined") ? value : null;'
+          master_item:
+            key: wfc.status
+        - uuid: e33926b7672b450089a6c56087614da4
+          name: 'WFC Witness name'
+          type: DEPENDENT
+          key: wfc.witness.name
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Witness.Name
+          master_item:
+            key: wfc.status
+        - uuid: a56df75636e84d01b492964a8a3ab0c7
+          name: 'WFC Witness resource'
+          type: DEPENDENT
+          key: wfc.witness.resource
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Witness.WitnessResource
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value && value !== "null" && value !== "undefined") ? value : null;'
+          master_item:
+            key: wfc.status
+        - uuid: 7b32fc6d8d74425b855e3c86496bbf82
+          name: 'WFC Witness type'
+          type: DEPENDENT
+          key: wfc.witness.type
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Witness.WitnessType
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value && value !== "null" && value !== "undefined") ? value : null;'
+          master_item:
+            key: wfc.status
+      discovery_rules:
+        - uuid: 7eeba69a228e46ca80b7f15f4cbddce0
+          name: 'WFC group discovery'
+          type: DEPENDENT
+          key: wfc.groups.discovery
+          delay: '0'
+          item_prototypes:
+            - uuid: 333f7e474f5a4de8b45fc2d8c76f57f8
+              name: 'WFC Group "{#GROUPNAME}" owner node'
+              type: DEPENDENT
+              key: 'wfc.group.owner["{#GROUPNAME}"]'
+              delay: '0'
+              value_type: TEXT
+              trends: '0'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var name = "{#GROUPNAME}";
+                      if (name === "Available Storage") return null;  // skip this group
+                      var j = JSON.parse(value);
+                      if (j && Array.isArray(j.Groups)) {
+                        for (var i=0;i<j.Groups.length;i++) {
+                          var g=j.Groups[i];
+                          if (g && g.Name === name) return g.OwnerNode || "";
+                        }
+                      }
+                      return null;
+              master_item:
+                key: wfc.status
+              trigger_prototypes:
+                - uuid: 1ec97e32070743358c9094fb09657c9c
+                  expression: 'change(/Windows Failover Cluster Monitoring Zabbix Agent Active/wfc.group.owner["{#GROUPNAME}"])=1'
+                  name: 'WFC Cluster Group {#GROUPNAME} Failover {ITEM.LASTVALUE}'
+                  priority: AVERAGE
+                  manual_close: 'YES'
+            - uuid: 65174442cfb8499f97d07ca70c1bdc2d
+              name: 'WFC Group "{#GROUPNAME}" state'
+              type: DEPENDENT
+              key: 'wfc.group.state["{#GROUPNAME}"]'
+              delay: '0'
+              value_type: TEXT
+              trends: '0'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var name = "{#GROUPNAME}";
+                      var j = JSON.parse(value);
+                      
+                      // Discard if it's the built-in "Available Storage" group
+                      if (name === "Available Storage") {
+                          return null; // drop update, item stores nothing
+                      }
+                      
+                      if (j && Array.isArray(j.Groups)) {
+                        for (var i = 0; i < j.Groups.length; i++) {
+                          var g = j.Groups[i];
+                          if (g && g.Name === name) {
+                            // Expecting "Online" / "Offline" etc.
+                            return g.State || "";
+                          }
+                        }
+                      }
+                      
+                      return null; // drop if not found
+              master_item:
+                key: wfc.status
+              trigger_prototypes:
+                - uuid: 222311116656424dbcec4d09f3e539b8
+                  expression: 'last(/Windows Failover Cluster Monitoring Zabbix Agent Active/wfc.group.state["{#GROUPNAME}"])<>"Online"'
+                  name: 'WFC Cluster group "{#GROUPNAME}" is not Online (was {ITEM.LASTVALUE})'
+                  priority: HIGH
+          master_item:
+            key: wfc.status
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // Input: full JSON from wfc.status
+                  // Output: {"data":[ {"{#GROUPNAME}":"...", "{#OWNERNODE}":"..."}, ... ]}
+                  var j = JSON.parse(value);
+                  var data = [];
+                  
+                  if (j && Array.isArray(j.Groups)) {
+                    for (var i = 0; i < j.Groups.length; i++) {
+                      var g = j.Groups[i];
+                      if (!g || !g.Name) continue;
+                      data.push({
+                        "{#GROUPNAME}": g.Name,
+                        "{#OWNERNODE}": g.OwnerNode || ""
+                      });
+                    }
+                  }
+                  return JSON.stringify({data: data});
+        - uuid: fdb9dd6387d541a2a97f551901d85688
+          name: 'WFC node discovery'
+          type: DEPENDENT
+          key: wfc.nodes.discovery
+          delay: '0'
+          item_prototypes:
+            - uuid: abe0f93f8738458ba78d77a0eef40087
+              name: 'WFC Node "{#NODENAME}" Weight (raw)'
+              type: DEPENDENT
+              key: 'wfc.node.dynamic_weight["{#NODENAME}"]'
+              delay: '0'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var name = "{#NODENAME}";
+                      var j = JSON.parse(value);
+                      if (j && Array.isArray(j.Nodes)) {
+                        for (var i = 0; i < j.Nodes.length; i++) {
+                          var n = j.Nodes[i];
+                          if (n && n.Name === name) {
+                            return n.NodeWeight; // your JSON shows numeric 0; adjust mapping as needed
+                          }
+                        }
+                      }
+                      return null;
+              master_item:
+                key: wfc.status
+            - uuid: c4069fbcf3c8431e8e131860d727ffe4
+              name: 'WFC Node "{#NODENAME}" state (raw)'
+              type: DEPENDENT
+              key: 'wfc.node.state.raw["{#NODENAME}"]'
+              delay: '0'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var name = "{#NODENAME}";
+                      var j = JSON.parse(value);
+                      if (j && Array.isArray(j.Nodes)) {
+                        for (var i = 0; i < j.Nodes.length; i++) {
+                          var n = j.Nodes[i];
+                          if (n && n.Name === name) {
+                            return n.State; // your JSON shows numeric 0; adjust mapping as needed
+                          }
+                        }
+                      }
+                      return null;
+              master_item:
+                key: wfc.status
+              trigger_prototypes:
+                - uuid: 1a9e8a3e0a1b44308d5b39af7065bdf2
+                  expression: 'last(/Windows Failover Cluster Monitoring Zabbix Agent Active/wfc.node.state.raw["{#NODENAME}"])<>0'
+                  name: 'Node "{#NODENAME}" state DOWN'
+                  priority: HIGH
+          master_item:
+            key: wfc.status
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var j = JSON.parse(value);
+                  var data = [];
+                  if (j && Array.isArray(j.Nodes)) {
+                    for (var i = 0; i < j.Nodes.length; i++) {
+                      var n = j.Nodes[i];
+                      if (!n || !n.Name) continue;
+                      data.push({
+                        "{#NODENAME}": n.Name
+                      });
+                    }
+                  }
+                  return JSON.stringify({data: data});
