@@ -6,12 +6,17 @@ Templates for extending the monitoring in Zabbix and give more information, insi
 Network map:
 Zabbix collect all established TCP connections every 5 minutes and Network map updates this every 5 minutes to get a ionteractive and up to date network map for the last 24 hours to view all established TCP connections from and to all servers that Zabbix monitor. 
 When clicking on a server on the map. TCP connection information and information from Netbox will show. 
+
 Posibility to filter map based on:
+
 Source
+
 Destination
+
 Port, ports and port range
 
-Report button to download 30 day history in
+Report button to download 30 day history in:
+
 Excel, csv and drawio files
 
 
