@@ -9,8 +9,11 @@ When clicking on a server on the map. TCP connection information and information
 
 Posibility to filter map based on:
 Source
+
 Destination
+
 Port, ports and port range
+
 
 Report button to download 30 day history in:
 Excel, csv and drawio files
