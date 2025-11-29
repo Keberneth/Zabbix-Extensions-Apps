@@ -8,15 +8,11 @@ Zabbix collect all established TCP connections every 5 minutes and Network map u
 When clicking on a server on the map. TCP connection information and information from Netbox will show. 
 
 Posibility to filter map based on:
-
 Source
-
 Destination
-
 Port, ports and port range
 
 Report button to download 30 day history in:
-
 Excel, csv and drawio files
 
 
