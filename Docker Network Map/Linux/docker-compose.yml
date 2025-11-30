@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  network-map:
+    build: .
+    container_name: network-map
+    restart: unless-stopped
+    # Map host port to container port
+    ports:
+      - "8000:8000"
+    # Persist logs and reports
+    volumes:
+      - network_map_logs:/opt/network_map/logs
+      - network_map_reports:/opt/network_map/reports
+    # Use .env file for tokens/URLs (optional, but recommended)
+    env_file:
+      - .env
+    # Run as the same UID on host (helps with volume perms on Linux; OK on Windows too)
+    user: "1000:1000"
+
+volumes:
+  network_map_logs:
+  network_map_reports:

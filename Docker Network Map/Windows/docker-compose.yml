@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  network-map:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: network-map
+    restart: unless-stopped
+
+    # Map host port 8000 -> container port 8000
+    ports:
+      - "8001:8000"
+
+    # Bind-mount logs and reports so you can see them on Windows
+    volumes:
+      - ./network_map/logs:/opt/network_map/logs
+      - ./network_map/reports:/opt/network_map/reports
+
+    # Optional: if using env-based config
+    env_file:
+      - .env
