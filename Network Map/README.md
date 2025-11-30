@@ -3,11 +3,11 @@
 En webbapplikation som visualiserar TCP nätverkstrafik insamlad via Zabbix-agenter och enrichad med data från NetBox. Applikationen genererar även automatiska 30-dagarsrapporter (Excel/CSV/DrawIO).
 
 # Länkar
-WEBSITE-URL/api/status
-WEBSITE-URL/api/network_map
-WEBSITE-URL/logs.html
-
-## Arkitektur
+WEBSITE-URL/api/status<br/>
+WEBSITE-URL/api/network_map<br/>
+WEBSITE-URL/logs.html<br/>
+<br/>
+## Arkitektur<br/>
 
 - Backend:
   - Python 3, FastAPI, Uvicorn
