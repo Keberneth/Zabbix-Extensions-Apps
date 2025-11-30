@@ -93,7 +93,7 @@ Se `installations instruktion.txt` för detaljer.
 <br/>
 ### Screenshots
 
-![Network Map Overview](Network%20Map/Network_Map_Pictures/1.jpg)
+![Network Map Overview]([Network%20Map/Network_Map_Pictures/1.jpg](https://github.com/Keberneth/Zabbix-Extensions-Apps/blob/main/Network%20Map/Network_Map_Pictures/1.jpg))
 
 ![Node Details Popup](Network%20Map/Network_Map_Pictures/2.jpg)
 
