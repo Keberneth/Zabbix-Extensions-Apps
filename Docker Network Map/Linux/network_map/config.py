@@ -12,7 +12,7 @@ ZABBIX_URL = os.getenv(
 )
 ZABBIX_TOKEN = os.getenv(
     "ZABBIX_TOKEN",
-    "5b7ebdb0836be16a97530e521cf0ecf8b6137b209acdd136cf82b7c2c4da7707",
+    "this_is_a_fake_token_for_example_purposes",
 )
 
 NETBOX_URL = os.getenv(
@@ -21,7 +21,7 @@ NETBOX_URL = os.getenv(
 )
 NETBOX_TOKEN = os.getenv(
     "NETBOX_TOKEN",
-    "6ab7eccbf5197ce2300f782afe1468f77f69d6ef",
+    "this_is_a_fake_token_for_example_purposes",
 )
 
 ZABBIX_REFRESH_SECONDS = 30 * 60
