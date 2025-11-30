@@ -88,3 +88,4 @@ Se `installations instruktion.txt` för detaljer.
 - Anpassa färger, layout och filterlogik i `app.js` och `styles.css`.
 - Lägga till fler API-rutter genom att utöka `routes_*.py`.
 - All konfiguration är hårdkodad i `config.py` i denna version (miljöspecifika värden kan flyttas till miljövariabler senare vid behov).
+
