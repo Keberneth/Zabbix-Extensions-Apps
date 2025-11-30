@@ -88,4 +88,17 @@ Se `installations instruktion.txt` för detaljer.
 - Anpassa färger, layout och filterlogik i `app.js` och `styles.css`.
 - Lägga till fler API-rutter genom att utöka `routes_*.py`.
 - All konfiguration är hårdkodad i `config.py` i denna version (miljöspecifika värden kan flyttas till miljövariabler senare vid behov).
+<br/>
+<br/>
+<br/>
+### Screenshots
 
+![Network Map Overview](Network%20Map/Network_Map_Pictures/1.jpg)
+
+![Node Details Popup](Network%20Map/Network_Map_Pictures/2.jpg)
+
+![Filters and Search](Network%20Map/Network_Map_Pictures/3.jpg)
+
+![Report Export Options](Network%20Map/Network_Map_Pictures/4.jpg)
+
+![Draw.io Example](Network%20Map/Network_Map_Pictures/drawio.jpg)
