@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Zabbix Report App</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100">
+  <div id="app" class="min-h-screen flex flex-col">
+    <header class="bg-white shadow p-4 flex justify-between items-center">
+      <h1 class="text-xl font-semibold">Zabbix Report App</h1>
+      <nav class="space-x-4">
+        <button class="tab-btn" data-tab="sla">SLA</button>
+        <button class="tab-btn" data-tab="availability">Server availability</button>
+        <button class="tab-btn" data-tab="icmp">ICMP</button>
+        <button class="tab-btn" data-tab="settings">Email settings</button>
+        <button class="tab-btn" data-tab="incidents">Incidents</button>
+      </nav>
+    </header>
+
+    <main class="flex-1 p-4">
+      <section id="tab-sla" class="tab-view">
+        <div class="flex justify-between mb-4">
+          <h2 class="text-lg font-semibold">SLA/SLI</h2>
+          <div class="space-x-2">
+            <button id="btn-sla-refresh" class="px-3 py-1 bg-blue-600 text-white rounded">Update</button>
+            <button id="btn-sla-download" class="px-3 py-1 border rounded">Download XLSX</button>
+            <button id="btn-sla-email" class="px-3 py-1 border rounded">Email report</button>
+          </div>
+        </div>
+        <canvas id="sla-chart" height="80"></canvas>
+        <div id="sla-table" class="mt-4"></div>
+      </section>
+
+      <section id="tab-incidents" class="tab-view hidden">
+        <div class="flex justify-between mb-4">
+          <h2 class="text-lg font-semibold">Incident Trends</h2>
+          <div class="space-x-2">
+            <button id="btn-inc-refresh" class="px-3 py-1 bg-blue-600 text-white rounded">Refresh</button>
+            <button id="btn-inc-download" class="px-3 py-1 border rounded">Download CSV</button>
+          </div>
+        </div>
+        <canvas id="incident-severity-chart" height="80"></canvas>
+        <div id="incident-top100" class="mt-4"></div>
+        <div id="incident-investigate" class="mt-4"></div>
+      </section>
+
+      <!-- other sections: availability, icmp, settings... -->
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

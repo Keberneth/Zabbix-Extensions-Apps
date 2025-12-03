@@ -1,0 +1,36 @@
+[Unit]
+Description=Zabbix Report App (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=zabbix
+Group=zabbix
+WorkingDirectory=/opt/zabbix_report
+
+Environment="ZABBIX_API_TOKEN=/etc/zabbix_report/token"
+Environment="ZABBIX_URL=https://your-zabbix-url/api_jsonrpc.php"
+Environment="PYTHONUNBUFFERED=1"
+
+ExecStart=/usr/bin/python3 -m uvicorn main:app \
+    --host 127.0.0.1 \
+    --port 8081 \
+    --workers 4 \
+    --timeout-keep-alive 75
+
+Restart=always
+RestartSec=5
+
+# Security hardening
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+NoNewPrivileges=true
+ReadWritePaths=/opt/zabbix_report/data
+ReadWritePaths=/var/log/zabbix-report
+RuntimeDirectory=zabbix-report
+
+[Install]
+WantedBy=multi-user.target
