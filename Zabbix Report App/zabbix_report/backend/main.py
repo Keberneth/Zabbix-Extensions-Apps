@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from io import BytesIO
 
-from .reports.sla import fetch_sla_sli
+from .reports.sla import get_sla_sli as fetch_sla_sli
 from .reports import availability, icmp, host_info, utilization, firewall_if_usage, uptime_trend, incident_trends
 from .emailer import sender, settings_store
 
