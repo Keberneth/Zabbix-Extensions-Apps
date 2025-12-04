@@ -3,7 +3,7 @@ import io
 import zipfile
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from config import REPORT_DIR
 from state import get_cached_map, get_last_updated
@@ -13,10 +13,12 @@ router = APIRouter()
 BASE_DIR = Path(__file__).resolve().parent
 
 
-@router.get("/", include_in_schema=False)
+@router.get("/")
 def serve_index():
-    # Just redirect "/" to the static index
-    return RedirectResponse(url="/static/index.html")
+    index_path = BASE_DIR / "static" / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=500, detail="Index file not found")
+    return FileResponse(index_path)
 
 
 @router.get("/api/status")
