@@ -53,8 +53,11 @@ def refresh_incident_cache(months: int = 2) -> None:
         "output": ["eventid", "clock", "objectid"],
         "selectHosts": ["hostid", "name"],
         "selectTags": "extend",
-        "source": 0,      # triggers
+        "source": 0,      # trigger events
         "object": 0,      # trigger object
+        # Only PROBLEM events, Warning/Average/High/Critical
+        "value": 1,
+        "severities": [2, 3, 4, 5],
         "time_from": int(start),
         "time_till": int(now.timestamp()),
     })

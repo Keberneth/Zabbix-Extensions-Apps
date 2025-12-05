@@ -302,42 +302,49 @@ def download_uptime_trend(months: int = 12, format: str = "csv"):
 
 @app.get("/api/reports/incidents/refresh")
 def refresh_incidents(months: int = 12):
-    incident_trends.refresh_incident_cache(months=months)  # :contentReference[oaicite:8]{index=8}
+    """
+    Force a refresh of the incident cache.
+
+    If Zabbix returns an error (HTTP 500 or API error), return 502 with
+    a readable message instead of a Python stack trace.
+    """
+    try:
+        incident_trends.refresh_incident_cache(months=months)
+    except Exception as exc:
+        logger.exception("Failed to refresh incident cache from Zabbix")
+        # 502 = bad gateway / upstream error, which is exactly what this is
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to refresh incident data from Zabbix: {exc}"
+        )
     return {"status": "ok"}
 
 
 @app.get("/api/reports/incidents")
 def get_incidents(months: int = 12, refresh: bool = True):
     """
-    Try to refresh cache, but never crash the API if Zabbix returns an error.
-    GUI will still show whatever is in cache (or 'cache empty' message).
+    Optionally refresh the cache, but always return a JSON structure
+    instead of raising. If refresh fails, we return whatever is in
+    cache plus an 'error' field.
     """
+    error: Optional[str] = None
+
     if refresh:
         try:
             incident_trends.refresh_incident_cache(months=months)
         except Exception as exc:
-            logger.exception("Failed to refresh incident cache: %s", exc)
+            logger.exception("Failed to refresh incident cache from Zabbix")
+            error = f"Failed to refresh incident data from Zabbix: {exc}"
 
-    return incident_trends.get_incident_trends(months=months)
+    data = incident_trends.get_incident_trends(months=months)
 
-@app.get("/api/reports/incidents/download")
-def download_incidents(months: int = 12):
-    data = incident_trends.get_incident_trends(months)
+    # If cache was empty AND refresh failed, data will already contain
+    # {"error": "Cache empty ..."}; we just append the more detailed reason.
+    if error:
+        data.setdefault("error_detail", error)
 
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["triggerid", "count"])
-    for tid, cnt in data.get("top_100_triggers", []):
-        w.writerow([tid, cnt])
+    return data
 
-    buf.seek(0)
-    byte_buf = BytesIO(buf.getvalue().encode("utf-8"))
-
-    return StreamingResponse(
-        byte_buf,
-        media_type="text/csv",
-        headers={"Content-Disposition": 'attachment; filename="incident_top100.csv"'},
-    )
 
 # ---------------------------------------------------------------------------
 # Email settings + reporting
