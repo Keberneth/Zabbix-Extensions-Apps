@@ -163,15 +163,26 @@
     </div>
   </header>
 
-  <nav>
+<nav>
+  <div style="display:flex; justify-content:space-between; align-items:center;">
     <div class="nav-tabs">
-      <button class="tab-btn tab-btn-active border-blue-600 text-blue-600 tab-btn" data-tab="sla">SLA</button>
-      <button class="tab-btn tab-btn border-transparent" data-tab="availability">Server availability</button>
-      <button class="tab-btn tab-btn border-transparent" data-tab="icmp">ICMP</button>
-      <button class="tab-btn tab-btn border-transparent" data-tab="email">Email settings</button>
-      <button class="tab-btn tab-btn border-transparent" data-tab="incidents">Incidents</button>
+      <button class="tab-btn tab-btn-active border-blue-600 text-blue-600" data-tab="sla">SLA</button>
+      <button class="tab-btn border-transparent" data-tab="availability">Server availability</button>
+      <button class="tab-btn border-transparent" data-tab="icmp">ICMP</button>
+      <button class="tab-btn border-transparent" data-tab="incidents">Incidents</button>
+      <button class="tab-btn border-transparent" data-tab="email">Email settings</button>
     </div>
-  </nav>
+
+    <div style="display:flex; gap:0.5rem;">
+      <button id="btn-monthly-refresh" class="btn btn-primary">
+        Update Monthly Report
+      </button>
+      <button id="btn-monthly-download" class="btn btn-secondary">
+        Download Monthly Report
+      </button>
+    </div>
+  </div>
+</nav>
 
   <main>
     <!-- SLA TAB -->
@@ -215,19 +226,38 @@
     <!-- AVAILABILITY TAB -->
     <section id="tab-availability" class="tab-view hidden">
       <h2 style="margin-bottom:0.75rem;">Server availability</h2>
-      <div class="card">
+
+      <div class="card" style="margin-bottom: 1rem;">
         <div class="card-header">
-          <div class="card-title">Availability report (JSON preview)</div>
+          <div>
+            <div class="card-title">Availability distribution</div>
+            <div class="card-sub">
+              Number of servers for each availability percentage (rounded to 0.1%).
+            </div>
+          </div>
           <div style="display:flex; gap:0.5rem;">
             <button id="btn-avail-refresh" class="btn btn-primary">Update</button>
-            <button id="btn-avail-download" class="btn btn-secondary">Download CSV</button>
+            <button id="btn-avail-download" class="btn btn-secondary">Download XLSX</button>
           </div>
         </div>
-        <div id="avail-content" class="muted">
+
+        <div style="height:200px; position:relative;">
+          <canvas id="avail-chart"></canvas>
+        </div>
+        <div id="avail-summary" class="muted" style="margin-top:0.5rem;">
+          No data loaded yet.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Per-server availability</div>
+        <div class="card-sub">Latest measurement window per host</div>
+        <div id="avail-table" class="muted" style="margin-top:0.5rem;">
           No data loaded yet.
         </div>
       </div>
     </section>
+
 
     <!-- ICMP TAB -->
     <section id="tab-icmp" class="tab-view hidden">

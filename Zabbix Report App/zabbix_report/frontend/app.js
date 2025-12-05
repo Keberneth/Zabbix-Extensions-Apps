@@ -2,6 +2,7 @@
 
 let slaChart = null;
 let incSeverityChart = null;
+let availChart = null;
 
 const tabLoaded = {
   sla: false,
@@ -402,29 +403,212 @@ function downloadIncidents() {
   window.location.href = "/api/reports/incidents/download";
 }
 
+function normalizeAvailabilityValue(row) {
+  const raw = row.availability;
+  if (raw === null || raw === undefined) return null;
+
+  if (typeof raw === "number") {
+    return Number.isNaN(raw) ? null : raw;
+  }
+
+  // Handle strings like "99.9%" or "No data"
+  const s = String(raw).trim();
+  if (!s || s.toLowerCase() === "no data") return null;
+
+  const cleaned = s.replace("%", "").trim();
+  const num = Number(cleaned);
+  return Number.isNaN(num) ? null : num;
+}
+
+
+function buildAvailabilityBuckets(rows) {
+  const buckets = {};   // label -> count
+  let noDataCount = 0;
+
+  rows.forEach((row) => {
+    const num = normalizeAvailabilityValue(row);
+    if (num === null) {
+      noDataCount += 1;
+      return;
+    }
+
+    // Round to one decimal place, e.g. 99.95 -> 100.0
+    const rounded = Math.round(num * 10) / 10;
+    const label = `${rounded.toFixed(1)}%`;
+    buckets[label] = (buckets[label] || 0) + 1;
+  });
+
+  const labels = Object.keys(buckets).sort(
+    (a, b) => parseFloat(b) - parseFloat(a)
+  );
+  const counts = labels.map((l) => buckets[l]);
+
+  return { labels, counts, noDataCount };
+}
+
+function renderAvailabilityChart(rows) {
+  const canvas = document.getElementById("avail-chart");
+  if (!canvas) return;
+
+  if (availChart) {
+    availChart.destroy();
+    availChart = null;
+  }
+
+  const { labels, counts } = buildAvailabilityBuckets(rows);
+
+  if (!labels.length) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  const ctx = canvas.getContext("2d");
+  availChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Number of servers",
+          data: counts,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: "Servers" },
+        },
+        x: {
+          title: { display: true, text: "Availability (%)" },
+        },
+      },
+    },
+  });
+}
+
+function renderAvailabilitySummary(rows) {
+  const el = document.getElementById("avail-summary");
+  if (!el) return;
+
+  if (!rows.length) {
+    el.textContent = "No availability data returned from backend.";
+    return;
+  }
+
+  let withData = 0;
+  let noData = 0;
+  rows.forEach((row) => {
+    const num = normalizeAvailabilityValue(row);
+    if (num === null) noData += 1;
+    else withData += 1;
+  });
+
+  el.textContent = `${withData} servers with availability data, ${noData} servers with no data.`;
+}
+
+function renderAvailabilityTable(rows) {
+  const container = document.getElementById("avail-table");
+  if (!container) return;
+
+  if (!rows.length) {
+    container.innerHTML =
+      '<p class="text-gray-500 text-sm">No availability data returned from backend.</p>';
+    return;
+  }
+
+  // Sort: highest availability first, then "No data" at the bottom
+  const sorted = [...rows].sort((a, b) => {
+    const avA = normalizeAvailabilityValue(a);
+    const avB = normalizeAvailabilityValue(b);
+    if (avA === null && avB === null) return 0;
+    if (avA === null) return 1;
+    if (avB === null) return -1;
+    return avB - avA;
+  });
+
+  let html = `
+    <table class="min-w-full divide-y divide-gray-200 text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-3 py-2 text-left font-semibold text-gray-700">Host</th>
+          <th class="px-3 py-2 text-right font-semibold text-gray-700">Availability</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100 bg-white">
+  `;
+
+  sorted.forEach((row) => {
+    const host = row.host || "";
+    const num = normalizeAvailabilityValue(row);
+    const display = num === null ? "No data" : `${num.toFixed(1)}%`;
+
+    html += `
+      <tr>
+        <td class="px-3 py-1 whitespace-nowrap">${host}</td>
+        <td class="px-3 py-1 text-right">${display}</td>
+      </tr>
+    `;
+  });
+
+  html += "</tbody></table>";
+  container.innerHTML = html;
+}
+
 /* ---------------------- AVAILABILITY & ICMP ---------------------- */
 
 async function loadAvailability() {
-  const container = document.getElementById("avail-content");
-  if (container) {
-    container.innerHTML =
+  const summaryEl = document.getElementById("avail-summary");
+  const tableEl = document.getElementById("avail-table");
+
+  if (summaryEl) {
+    summaryEl.textContent = "Loading server availability...";
+  }
+  if (tableEl) {
+    tableEl.innerHTML =
       '<p class="text-xs text-gray-500">Loading server availability...</p>';
   }
+
   try {
     const data = await fetchJson("/api/reports/availability");
-    if (container) {
-      container.innerHTML =
-        "<pre class='text-xs whitespace-pre-wrap break-all'>" +
-        JSON.stringify(data, null, 2) +
-        "</pre>";
-    }
+    renderAvailabilityChart(data);
+    renderAvailabilitySummary(data);
+    renderAvailabilityTable(data);
   } catch (err) {
     console.error("Failed to load availability", err);
-    if (container) {
-      container.innerHTML = `<p class="text-red-600 text-sm">Failed to load availability: ${err.message}</p>`;
+    if (summaryEl) {
+      summaryEl.textContent = `Failed to load availability: ${err.message}`;
+    }
+    if (tableEl) {
+      tableEl.innerHTML = `<p class="text-red-600 text-sm">Failed to load availability: ${err.message}</p>`;
     }
   }
 }
+
+/* ---------------------- MONTHLY REPORT ---------------------- */
+
+async function updateMonthlyReport() {
+  try {
+    await fetchJson("/api/reports/monthly/refresh", { method: "POST" });
+    console.log("Monthly report refreshed.");
+    // If you want, you can show a toast/message here
+  } catch (err) {
+    console.error("Failed to refresh monthly report", err);
+    alert("Failed to update monthly report: " + err.message);
+  }
+}
+
+function downloadMonthlyReport() {
+  window.location.href = "/api/reports/monthly/download";
+}
+
 
 function downloadAvailability() {
   window.location.href = "/api/reports/availability/download";
@@ -615,7 +799,8 @@ document.addEventListener("DOMContentLoaded", () => {
     btnIncDownload.addEventListener("click", downloadIncidents);
 
   const btnAvailRefresh = document.getElementById("btn-avail-refresh");
-  if (btnAvailRefresh) btnAvailRefresh.addEventListener("click", loadAvailability);
+  if (btnAvailRefresh)
+    btnAvailRefresh.addEventListener("click", loadAvailability);
 
   const btnAvailDownload = document.getElementById("btn-avail-download");
   if (btnAvailDownload)
@@ -625,12 +810,25 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnIcmpRefresh) btnIcmpRefresh.addEventListener("click", loadICMP);
 
   const btnIcmpDownload = document.getElementById("btn-icmp-download");
-  if (btnIcmpDownload) btnIcmpDownload.addEventListener("click", downloadICMP);
+  if (btnIcmpDownload)
+    btnIcmpDownload.addEventListener("click", downloadICMP);
 
   const btnEmailSave = document.getElementById("btn-email-save");
   if (btnEmailSave) btnEmailSave.addEventListener("click", saveEmailSettings);
 
+  // Monthly report buttons
+  const btnMonthlyRefresh = document.getElementById("btn-monthly-refresh");
+  if (btnMonthlyRefresh)
+    btnMonthlyRefresh.addEventListener("click", updateMonthlyReport);
+
+  const btnMonthlyDownload = document.getElementById("btn-monthly-download");
+  if (btnMonthlyDownload)
+    btnMonthlyDownload.addEventListener("click", downloadMonthlyReport);
+
   setupTabs();
   loadStatus();
   activateTab("sla");
+
+  // Ensure monthly report is created when the GUI loads
+  updateMonthlyReport();
 });

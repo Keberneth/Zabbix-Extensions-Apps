@@ -3,6 +3,8 @@ from pathlib import Path
 from io import BytesIO
 import io
 import csv
+from openpyxl import Workbook   # <-- add this
+from . import config
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -19,6 +21,7 @@ from .reports import (
     firewall_if_usage,
     uptime_trend,
     incident_trends,
+    monthly_report,
 )
 from .emailer import sender, settings_store
 from .logging_utils import setup_logging, get_log_level, set_log_level, tail_log  # 
@@ -34,6 +37,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+@app.on_event("startup")
+async def build_monthly_report_on_startup():
+    """
+    Build the monthly SLA report once when the application starts.
+    If it fails (e.g., Zabbix temporarily unavailable), it is just logged,
+    and the user can trigger a rebuild with the 'Update Monthly Report' button.
+    """
+    import logging
+
+    log = logging.getLogger(__name__)
+    try:
+        monthly_report.generate_monthly_report()
+        log.info("Monthly SLA report generated on startup.")
+    except Exception:
+        log.exception("Failed to generate monthly SLA report on startup.")
 
 # ---------------------------------------------------------------------------
 # Status
@@ -48,6 +66,54 @@ def api_status():
         "status": "ok",
         "zabbix_url": config.ZABBIX_URL,
     }
+
+# ---------------------------------------------------------------------------
+# Monthly SLA report (cached XLSX)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/reports/monthly/refresh")
+def api_monthly_report_refresh():
+    """
+    Regenerate the cached monthly SLA report and store it under TMP_DIR.
+    """
+    try:
+        from .reports import monthly_report
+
+        path = monthly_report.generate_monthly_report()
+    except Exception as exc:
+        raise HTTPException(500, f"Failed to regenerate monthly report: {exc}") from exc
+
+    return {
+        "status": "ok",
+        "path": str(path),
+    }
+
+
+@app.get("/api/reports/monthly/download")
+def api_monthly_report_download():
+    """
+    Download the cached monthly SLA report (XLSX).
+    If it does not exist yet, generate it once first.
+    """
+    from .reports import monthly_report
+
+    path = monthly_report.get_existing_report_path()
+    if path is None:
+        try:
+            path = monthly_report.generate_monthly_report()
+        except Exception as exc:
+            raise HTTPException(500, f"Failed to generate monthly report: {exc}") from exc
+
+    if not path.exists():
+        raise HTTPException(404, "Monthly report file is missing.")
+
+    return StreamingResponse(
+        path.open("rb"),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="monthly_sla_report.xlsx"'
+        },
+    )
 
 # ---------------------------------------------------------------------------
 # SLA / SLI
@@ -81,40 +147,68 @@ def download_sla(format: str = "xlsx"):
 @app.get("/api/reports/availability")
 def api_availability(days: int = 30):
     """
-    JSON availability per host (de-duplicated across groups). :contentReference[oaicite:4]{index=4}
+    JSON availability per host (de-duplicated across groups).
+    Returns one row per host with fields including:
+      - host (str)
+      - availability (float in [0, 100] or None if no data)
+      - group_names, etc.
     """
     return availability.get_availability(days=days)
 
 
 @app.get("/api/reports/availability/download")
 def download_availability(days: int = 30):
+    """
+    Excel export of availability.
+    Only includes 'host' and 'availability' columns.
+    """
     rows = availability.get_availability(days=days)
-    buf = io.StringIO()
-    w = csv.writer(buf)
 
-    if rows:
-        header = list(rows[0].keys())
-        w.writerow(header)
-        for r in rows:
-            w.writerow([r.get(k, "") for k in header])
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Availability"
 
+    # Header
+    ws.append(["Host", "Availability (%)"])
+
+    for row in rows:
+        host = row.get("host", "")
+        avail_raw = row.get("availability")
+
+        # Backend returns strings like "99.9%" or "No data"
+        if not isinstance(avail_raw, str):
+            display = "No data"
+        else:
+            val = avail_raw.strip()
+            if not val or val.lower() == "no data":
+                display = "No data"
+            else:
+                try:
+                    num = float(val.replace("%", "").strip())
+                    display = round(num, 1)
+                except (TypeError, ValueError):
+                    display = "No data"
+
+        ws.append([host, display])
+
+    buf = BytesIO()
+    wb.save(buf)
     buf.seek(0)
-    byte_buf = BytesIO(buf.getvalue().encode("utf-8"))
+
     return StreamingResponse(
-        byte_buf,
-        media_type="text/csv",
-        headers={"Content-Disposition": 'attachment; filename="availability.csv"'},
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="availability.xlsx"'},
     )
+
+
 
 # ---------------------------------------------------------------------------
 # ICMP
 # ---------------------------------------------------------------------------
 
 @app.get("/api/reports/icmp")
-def api_icmp(days: int = 30):
-    """
-    ICMP history for FW/switch groups (default). :contentReference[oaicite:5]{index=5}
-    """
+def api_icmp(days: int = 7):   # instead of 30
     return icmp.get_icmp_history(days=days)
 
 
@@ -250,11 +344,16 @@ def refresh_incidents(months: int = 12):
 @app.get("/api/reports/incidents")
 def get_incidents(months: int = 12, refresh: bool = True):
     """
-    By default, refresh the incident cache before returning data so the GUI
-    always works without calling the refresh URL manually.
+    Try to refresh cache, but never crash the API if Zabbix returns 500.
+    GUI will still show whatever is in cache (or 'cache empty' message).
     """
     if refresh:
-        incident_trends.refresh_incident_cache(months=months)
+        try:
+            incident_trends.refresh_incident_cache(months=months)
+        except Exception as exc:
+            logger.exception("Failed to refresh incident cache: %s", exc)
+            # fall through and return existing cache (if any)
+
     return incident_trends.get_incident_trends(months=months)
 
 
