@@ -3,10 +3,11 @@ from pathlib import Path
 from io import BytesIO
 import io
 import csv
-from openpyxl import Workbook   # <-- add this
-from . import config
+import logging
+import threading
 
-from fastapi import FastAPI, HTTPException
+from openpyxl import Workbook
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -24,10 +25,11 @@ from .reports import (
     monthly_report,
 )
 from .emailer import sender, settings_store
-from .logging_utils import setup_logging, get_log_level, set_log_level, tail_log  # 
+from .logging_utils import setup_logging, get_log_level, set_log_level, tail_log
 
 # Initialize logging as early as possible
 setup_logging()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Zabbix Report App")
 
@@ -37,21 +39,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-@app.on_event("startup")
-async def build_monthly_report_on_startup():
-    """
-    Build the monthly SLA report once when the application starts.
-    If it fails (e.g., Zabbix temporarily unavailable), it is just logged,
-    and the user can trigger a rebuild with the 'Update Monthly Report' button.
-    """
-    import logging
 
-    log = logging.getLogger(__name__)
-    try:
-        monthly_report.generate_monthly_report()
-        log.info("Monthly SLA report generated on startup.")
-    except Exception:
-        log.exception("Failed to generate monthly SLA report on startup.")
+# ---------------------------------------------------------------------------
+# Startup: schedule monthly report build in background (non-blocking)
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+async def schedule_monthly_report_build():
+    """
+    Schedule monthly report generation in a background thread so that
+    application startup is not blocked.
+    """
+    def _worker():
+        try:
+            monthly_report.generate_monthly_report()
+            logger.info("Monthly SLA report generated on startup (background).")
+        except Exception:
+            logger.exception("Failed to generate monthly SLA report on startup.")
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
 
 # ---------------------------------------------------------------------------
 # Status
@@ -59,9 +66,6 @@ async def build_monthly_report_on_startup():
 
 @app.get("/api/status")
 def api_status():
-    """
-    Lightweight health endpoint for the GUI.
-    """
     return {
         "status": "ok",
         "zabbix_url": config.ZABBIX_URL,
@@ -72,31 +76,19 @@ def api_status():
 # ---------------------------------------------------------------------------
 
 @app.post("/api/reports/monthly/refresh")
-def api_monthly_report_refresh():
+def api_monthly_report_refresh(background_tasks: BackgroundTasks):
     """
-    Regenerate the cached monthly SLA report and store it under TMP_DIR.
+    Regenerate the cached monthly SLA report asynchronously.
+
+    The work is scheduled in the background and this endpoint returns
+    immediately to avoid 504s from Nginx.
     """
-    try:
-        from .reports import monthly_report
-
-        path = monthly_report.generate_monthly_report()
-    except Exception as exc:
-        raise HTTPException(500, f"Failed to regenerate monthly report: {exc}") from exc
-
-    return {
-        "status": "ok",
-        "path": str(path),
-    }
+    background_tasks.add_task(monthly_report.generate_monthly_report)
+    return {"status": "scheduled"}
 
 
 @app.get("/api/reports/monthly/download")
 def api_monthly_report_download():
-    """
-    Download the cached monthly SLA report (XLSX).
-    If it does not exist yet, generate it once first.
-    """
-    from .reports import monthly_report
-
     path = monthly_report.get_existing_report_path()
     if path is None:
         try:
@@ -121,12 +113,12 @@ def api_monthly_report_download():
 
 @app.get("/api/reports/sla")
 def get_sla(periods: int = 12):
-    return fetch_sla_sli(periods=periods)  # :contentReference[oaicite:2]{index=2}
+    return fetch_sla_sli(periods=periods)  # :contentReference[oaicite:0]{index=0}
 
 
 @app.get("/api/reports/sla/download")
 def download_sla(format: str = "xlsx"):
-    from .reports.sla_download import create_sla_xlsx_bytes  # :contentReference[oaicite:3]{index=3}
+    from .reports.sla_download import create_sla_xlsx_bytes  # :contentReference[oaicite:1]{index=1}
 
     if format.lower() != "xlsx":
         raise HTTPException(400, "Only xlsx supported for now")
@@ -134,9 +126,7 @@ def download_sla(format: str = "xlsx"):
     data = create_sla_xlsx_bytes(fetch_sla_sli())
     return StreamingResponse(
         data,
-        media_type=(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="sla_report.xlsx"'},
     )
 
@@ -148,34 +138,24 @@ def download_sla(format: str = "xlsx"):
 def api_availability(days: int = 30):
     """
     JSON availability per host (de-duplicated across groups).
-    Returns one row per host with fields including:
-      - host (str)
-      - availability (float in [0, 100] or None if no data)
-      - group_names, etc.
     """
-    return availability.get_availability(days=days)
+    return availability.get_availability(days=days)  # :contentReference[oaicite:2]{index=2}
 
 
 @app.get("/api/reports/availability/download")
 def download_availability(days: int = 30):
-    """
-    Excel export of availability.
-    Only includes 'host' and 'availability' columns.
-    """
     rows = availability.get_availability(days=days)
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Availability"
 
-    # Header
     ws.append(["Host", "Availability (%)"])
 
     for row in rows:
         host = row.get("host", "")
         avail_raw = row.get("availability")
 
-        # Backend returns strings like "99.9%" or "No data"
         if not isinstance(avail_raw, str):
             display = "No data"
         else:
@@ -201,15 +181,13 @@ def download_availability(days: int = 30):
         headers={"Content-Disposition": 'attachment; filename="availability.xlsx"'},
     )
 
-
-
 # ---------------------------------------------------------------------------
 # ICMP
 # ---------------------------------------------------------------------------
 
 @app.get("/api/reports/icmp")
-def api_icmp(days: int = 7):   # instead of 30
-    return icmp.get_icmp_history(days=days)
+def api_icmp(days: int = 7):
+    return icmp.get_icmp_history(days=days)  # :contentReference[oaicite:3]{index=3}
 
 
 @app.get("/api/reports/icmp/download")
@@ -260,21 +238,15 @@ def download_icmp(days: int = 30):
 
 @app.get("/api/reports/host-info")
 def api_host_info():
-    """
-    Static host inventory info (OS, RAM, cores, disks). :contentReference[oaicite:6]{index=6}
-    """
-    return host_info.get_host_info()
+    return host_info.get_host_info()  # :contentReference[oaicite:4]{index=4}
 
 # ---------------------------------------------------------------------------
-# Service utilization (CPU / RAM)
+# Utilization
 # ---------------------------------------------------------------------------
 
 @app.get("/api/reports/utilization")
 def api_utilization(days: int = 30):
-    """
-    Per-host CPU/RAM utilization for processes/services. :contentReference[oaicite:7]{index=7}
-    """
-    return utilization.get_service_utilization(days=days)
+    return utilization.get_service_utilization(days=days)  # :contentReference[oaicite:5]{index=5}
 
 # ---------------------------------------------------------------------------
 # Firewall interface usage
@@ -282,23 +254,16 @@ def api_utilization(days: int = 30):
 
 @app.get("/api/reports/firewall-if-usage")
 def api_firewall_if_usage(days: int = 30):
-    """
-    Bits sent history for FW interfaces. :contentReference[oaicite:8]{index=8}
-    """
-    return firewall_if_usage.get_firewall_interface_usage(days=days)
+    return firewall_if_usage.get_firewall_interface_usage(days=days)  # :contentReference[oaicite:6]{index=6}
 
 # ---------------------------------------------------------------------------
-# Uptime trend (12-month rolling, using persistent cache)
+# Uptime trend
 # ---------------------------------------------------------------------------
 
 @app.get("/api/reports/uptime-trend")
 def get_uptime_trend(months: int = 12, refresh: bool = True):
-    """
-    Returns last `months` of uptime per host from cache, optionally refreshing
-    cache using recent availability data. :contentReference[oaicite:9]{index=9}
-    """
     if refresh:
-        uptime_trend.refresh_from_recent(days=35)
+        uptime_trend.refresh_from_recent(days=35)  # :contentReference[oaicite:7]{index=7}
     return uptime_trend.get_uptime_trend(months=months)
 
 
@@ -332,19 +297,19 @@ def download_uptime_trend(months: int = 12, format: str = "csv"):
     )
 
 # ---------------------------------------------------------------------------
-# Incident trends (12-month + 30-day “needs investigation”)
+# Incident trends
 # ---------------------------------------------------------------------------
 
 @app.get("/api/reports/incidents/refresh")
 def refresh_incidents(months: int = 12):
-    incident_trends.refresh_incident_cache(months=months)  # :contentReference[oaicite:10]{index=10}
+    incident_trends.refresh_incident_cache(months=months)  # :contentReference[oaicite:8]{index=8}
     return {"status": "ok"}
 
 
 @app.get("/api/reports/incidents")
 def get_incidents(months: int = 12, refresh: bool = True):
     """
-    Try to refresh cache, but never crash the API if Zabbix returns 500.
+    Try to refresh cache, but never crash the API if Zabbix returns an error.
     GUI will still show whatever is in cache (or 'cache empty' message).
     """
     if refresh:
@@ -352,10 +317,8 @@ def get_incidents(months: int = 12, refresh: bool = True):
             incident_trends.refresh_incident_cache(months=months)
         except Exception as exc:
             logger.exception("Failed to refresh incident cache: %s", exc)
-            # fall through and return existing cache (if any)
 
     return incident_trends.get_incident_trends(months=months)
-
 
 @app.get("/api/reports/incidents/download")
 def download_incidents(months: int = 12):
@@ -382,7 +345,7 @@ def download_incidents(months: int = 12):
 
 @app.get("/api/email/settings")
 def get_email_settings():
-    return settings_store.get_settings()  # :contentReference[oaicite:11]{index=11}
+    return settings_store.get_settings()  # :contentReference[oaicite:9]{index=9}
 
 
 @app.put("/api/email/settings")
@@ -391,7 +354,6 @@ def update_email_settings(settings: dict):
     return {"status": "ok"}
 
 
-# Accept POST as well so the frontend can use either.
 @app.post("/api/email/settings")
 def update_email_settings_post(settings: dict):
     settings_store.save_settings(settings)
@@ -400,20 +362,12 @@ def update_email_settings_post(settings: dict):
 
 @app.post("/api/email/send-report")
 def send_report(payload: dict):
-    """
-    Generic email-sending entrypoint, expects the payload format described
-    in sender.send_report_email.
-    """
-    sender.send_report_email(payload)  # :contentReference[oaicite:12]{index=12}
+    sender.send_report_email(payload)  # :contentReference[oaicite:10]{index=10}
     return {"status": "sent"}
 
 
 @app.post("/api/email/send-sla")
 def send_sla_email():
-    """
-    Convenience endpoint used by the GUI: send latest SLA report to default
-    recipients stored in email settings (field: to_addr).
-    """
     settings = settings_store.get_settings()
     recipients = settings.get("to_addr") or []
     if not recipients:

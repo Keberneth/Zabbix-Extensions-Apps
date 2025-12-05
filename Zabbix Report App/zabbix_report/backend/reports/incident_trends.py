@@ -1,4 +1,3 @@
-# reports/incident_trends.py
 from __future__ import annotations
 
 import time
@@ -38,7 +37,7 @@ def _now_month_labels(months: int) -> List[str]:
     return labels
 
 
-def refresh_incident_cache(months: int = 3) -> None:
+def refresh_incident_cache(months: int = 2) -> None:
     """
     Refresh incident cache by querying Zabbix events for triggers
     for the last `months` months.
@@ -155,7 +154,7 @@ def refresh_incident_cache(months: int = 3) -> None:
     touch_cache(CACHE_NAME)
 
 
-def get_incident_trends(months: int = 3) -> Dict[str, Any]:
+def get_incident_trends(months: int = 2) -> Dict[str, Any]:
     """
     Return processed incident trend data.
     """

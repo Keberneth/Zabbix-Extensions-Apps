@@ -56,7 +56,7 @@ async function loadStatus() {
 
 function parseSLAData(raw) {
   const rows = [];
-  let firstService = null;
+  let firstService = null; // kept for backward compatibility if needed
 
   if (!raw || typeof raw !== "object") {
     return { rows, firstService };
@@ -166,42 +166,73 @@ function renderSLASummary(rows) {
   `;
 }
 
-function renderSLAChart(firstService) {
+/**
+ * New: render all services on the SLA chart.
+ * Each service becomes its own dataset with its own color.
+ * Clicking the legend entry still hides/shows that service.
+ */
+function renderSLAChart(rows) {
   const canvas = document.getElementById("sla-chart");
+  const statusEl = document.getElementById("sla-trend-status");
   if (!canvas) return;
 
-  if (!firstService || !firstService.monthLabels.length) {
+  if (slaChart) {
+    slaChart.destroy();
+    slaChart = null;
+  }
+
+  if (!rows || !rows.length) {
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (statusEl) statusEl.textContent = "No SLA data to display.";
     return;
   }
 
-  const labels = firstService.monthLabels;
-  const dataPoints = firstService.monthlyValues.map((v) => {
-    if (v == null) return null;
-    const num = parseFloat(String(v).replace("%", ""));
-    return Number.isNaN(num) ? null : num;
-  });
+  // Use month labels from the first row that has them
+  const baseRow =
+    rows.find((r) => Array.isArray(r.monthLabels) && r.monthLabels.length) ||
+    rows[0];
 
-  if (slaChart) slaChart.destroy();
+  const labels = baseRow.monthLabels || [];
+  if (!labels.length) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (statusEl) statusEl.textContent = "No SLA data to display.";
+    return;
+  }
+
+  const datasets = rows.map((row) => {
+    const indexByMonth = {};
+    (row.monthLabels || []).forEach((m, idx) => {
+      indexByMonth[m] = idx;
+    });
+
+    const dataPoints = labels.map((m) => {
+      const idx = indexByMonth[m];
+      if (idx === undefined) return null;
+      const v = row.monthlyValues[idx];
+      if (v == null) return null;
+      const num = parseFloat(String(v).replace("%", ""));
+      return Number.isNaN(num) ? null : num;
+    });
+
+    return {
+      label: row.serviceName || `Service ${row.serviceId}`,
+      data: dataPoints,
+      tension: 0.25,
+    };
+  });
 
   const ctx = canvas.getContext("2d");
   slaChart = new Chart(ctx, {
     type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: `${firstService.serviceName} SLI (%)`,
-          data: dataPoints,
-          tension: 0.25,
-        },
-      ],
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: true } },
+      plugins: {
+        legend: { display: true }, // clicking legend toggles lines
+      },
       scales: {
         y: {
           beginAtZero: true,
@@ -211,6 +242,8 @@ function renderSLAChart(firstService) {
       },
     },
   });
+
+  if (statusEl) statusEl.textContent = "";
 }
 
 async function loadSLA() {
@@ -226,10 +259,10 @@ async function loadSLA() {
 
   try {
     const raw = await fetchJson("/api/reports/sla");
-    const { rows, firstService } = parseSLAData(raw);
+    const { rows } = parseSLAData(raw);
     renderSLATable(rows);
     renderSLASummary(rows);
-    renderSLAChart(firstService);
+    renderSLAChart(rows);
 
     if (trendContainer) {
       trendContainer.textContent = rows.length
@@ -267,7 +300,7 @@ function renderIncidentSeverityChart(data) {
   }
 
   const datasets = Object.entries(sevObj).map(([sev, monthMap]) => {
-    const arr = labels.map((m) => (monthMap[m] ?? 0));
+    const arr = labels.map((m) => monthMap[m] ?? 0);
     return { label: sev, data: arr, stack: "incidents" };
   });
 
@@ -403,6 +436,8 @@ function downloadIncidents() {
   window.location.href = "/api/reports/incidents/download";
 }
 
+/* ---------------------- AVAILABILITY ---------------------- */
+
 function normalizeAvailabilityValue(row) {
   const raw = row.availability;
   if (raw === null || raw === undefined) return null;
@@ -411,7 +446,6 @@ function normalizeAvailabilityValue(row) {
     return Number.isNaN(raw) ? null : raw;
   }
 
-  // Handle strings like "99.9%" or "No data"
   const s = String(raw).trim();
   if (!s || s.toLowerCase() === "no data") return null;
 
@@ -420,9 +454,8 @@ function normalizeAvailabilityValue(row) {
   return Number.isNaN(num) ? null : num;
 }
 
-
 function buildAvailabilityBuckets(rows) {
-  const buckets = {};   // label -> count
+  const buckets = {};
   let noDataCount = 0;
 
   rows.forEach((row) => {
@@ -432,7 +465,6 @@ function buildAvailabilityBuckets(rows) {
       return;
     }
 
-    // Round to one decimal place, e.g. 99.95 -> 100.0
     const rounded = Math.round(num * 10) / 10;
     const label = `${rounded.toFixed(1)}%`;
     buckets[label] = (buckets[label] || 0) + 1;
@@ -524,7 +556,6 @@ function renderAvailabilityTable(rows) {
     return;
   }
 
-  // Sort: highest availability first, then "No data" at the bottom
   const sorted = [...rows].sort((a, b) => {
     const avA = normalizeAvailabilityValue(a);
     const avB = normalizeAvailabilityValue(b);
@@ -598,7 +629,6 @@ async function updateMonthlyReport() {
   try {
     await fetchJson("/api/reports/monthly/refresh", { method: "POST" });
     console.log("Monthly report refreshed.");
-    // If you want, you can show a toast/message here
   } catch (err) {
     console.error("Failed to refresh monthly report", err);
     alert("Failed to update monthly report: " + err.message);
@@ -608,7 +638,6 @@ async function updateMonthlyReport() {
 function downloadMonthlyReport() {
   window.location.href = "/api/reports/monthly/download";
 }
-
 
 function downloadAvailability() {
   window.location.href = "/api/reports/availability/download";
@@ -738,10 +767,7 @@ function activateTab(tabName) {
 
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === tabName) {
-      btn.classList.add(
-        "border-blue-600",
-        "text-blue-600"
-      );
+      btn.classList.add("border-blue-600", "text-blue-600");
       btn.classList.remove(
         "border-transparent",
         "text-gray-600",
@@ -780,6 +806,7 @@ function setupTabs() {
 
 /* ---------------------- WIRE UP ---------------------- */
 
+// frontend/app.js (bottom of file) 
 document.addEventListener("DOMContentLoaded", () => {
   // Buttons
   const btnSlaRefresh = document.getElementById("btn-sla-refresh");
@@ -829,6 +856,6 @@ document.addEventListener("DOMContentLoaded", () => {
   loadStatus();
   activateTab("sla");
 
-  // Ensure monthly report is created when the GUI loads
-  updateMonthlyReport();
+  // Removed automatic updateMonthlyReport() call to avoid 504 popups at startup
 });
+

@@ -162,13 +162,16 @@ def get_availability(
             host_name = h["host"]
 
             # If we've already processed this host, just add group info and skip
+            # for each host
             existing = host_rows.get(host_id)
             if existing is not None:
+                # host already processed for another group -> just append group info
                 if gid not in existing["groupids"]:
                     existing["groupids"].append(gid)
                 if gname not in existing["group_names"]:
                     existing["group_names"].append(gname)
-                continue
+                continue  # do NOT recompute availability
+            
 
             # New host: compute availability once
             items = zbx_call(
