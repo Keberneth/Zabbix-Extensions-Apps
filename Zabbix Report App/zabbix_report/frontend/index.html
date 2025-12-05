@@ -1,258 +1,369 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Zabbix Report App</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- Tailwind via CDN (good enough for internal tool) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta charset="UTF-8" />
+    <title>Zabbix Report App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        :root {
+            --bg: #f5f7fb;
+            --card-bg: #ffffff;
+            --border: #e0e4f2;
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --danger: #dc2626;
+            --success: #16a34a;
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --tab-active: #111827;
+            --tab-inactive: #6b7280;
+        }
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text-main);
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #ffffff;
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 999px;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .brand-text-title {
+            font-weight: 600;
+        }
+        .brand-text-sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 0.8rem;
+        }
+        .pill {
+            border-radius: 999px;
+            padding: 0.25rem 0.75rem;
+            border: 1px solid var(--border);
+            background: #f9fafb;
+        }
+        .pill.bad {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+        .pill.good {
+            border-color: var(--success);
+            color: var(--success);
+        }
+
+        nav {
+            border-bottom: 1px solid var(--border);
+            background: #ffffff;
+        }
+        .nav-tabs {
+            display: flex;
+            gap: 1.5rem;
+            padding: 0.5rem 1.5rem 0.25rem 1.5rem;
+        }
+        .nav-tab {
+            background: none;
+            border: none;
+            padding: 0.5rem 0;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--tab-inactive);
+            border-bottom: 2px solid transparent;
+        }
+        .nav-tab.active {
+            color: var(--tab-active);
+            border-bottom-color: var(--primary);
+            font-weight: 600;
+        }
+
+        main {
+            flex: 1;
+            padding: 1.5rem;
+        }
+
+        .tab {
+            display: none;
+        }
+        .tab.active {
+            display: block;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: 0.75rem;
+            border: 1px solid var(--border);
+            padding: 1rem 1.25rem;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+        }
+        .card-title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+        .card-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .card-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .actions-right {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            font-size: 0.8rem;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            padding: 0.35rem 0.9rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+        .btn-secondary {
+            background: #f9fafb;
+            color: var(--text-main);
+            border-color: var(--border);
+        }
+        .btn-secondary:hover {
+            background: #f3f4f6;
+        }
+        .btn-success {
+            background: var(--success);
+            color: #fff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+        th, td {
+            padding: 0.35rem 0.4rem;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .muted {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .sla-chart-table th,
+        .sla-chart-table td {
+            text-align: center;
+        }
+        .sla-bar {
+            display: inline-block;
+            width: 12px;
+            border-radius: 999px;
+            background: var(--primary);
+        }
+
+        .pill-severity {
+            border-radius: 999px;
+            padding: 0.05rem 0.5rem;
+            font-size: 0.7rem;
+        }
+        .sev-warning { background: #fef3c7; color: #92400e; }
+        .sev-average { background: #e0f2fe; color: #0369a1; }
+        .sev-high { background: #fee2e2; color: #b91c1c; }
+        .sev-critical { background: #fee2e2; color: #991b1b; }
+
+        @media (max-width: 960px) {
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
-<body class="bg-gray-100 text-gray-900">
-  <div class="min-h-screen flex flex-col">
-    <!-- Top bar -->
-    <header class="bg-white shadow-sm">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-          <div class="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
-            Z
-          </div>
-          <div>
-            <h1 class="text-xl font-semibold">Zabbix Report App</h1>
-            <p class="text-xs text-gray-500">Internal reporting &amp; SLA dashboard</p>
-          </div>
+<body>
+<div class="app-shell">
+    <header>
+        <div class="brand">
+            <div class="brand-icon">Z</div>
+            <div>
+                <div class="brand-text-title">Zabbix Report App</div>
+                <div class="brand-text-sub">Internal reporting &amp; SLA dashboard</div>
+            </div>
         </div>
-        <div class="flex items-center space-x-4 text-xs">
-          <div id="status-pill" class="px-2 py-1 rounded-full bg-gray-200 text-gray-700">
-            Backend: unknown
-          </div>
-          <div class="hidden sm:block text-gray-400">|</div>
-          <div class="hidden sm:flex items-center space-x-2 text-gray-500">
-            <span class="font-mono text-[10px] sm:text-xs break-all" id="zabbix-url-display">
-              Zabbix URL: &mdash;
-            </span>
-          </div>
+        <div class="status-bar">
+            <span id="backend-status-pill" class="pill">Backend: unknown</span>
+            <span class="muted">Zabbix URL: <span id="zabbix-url-label">-</span></span>
         </div>
-      </div>
-      <!-- Tabs -->
-      <nav class="border-t border-gray-200 bg-gray-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div class="flex space-x-4 overflow-x-auto py-2 text-sm">
-            <button class="tab-btn border-b-2 border-blue-600 text-blue-600 px-3 py-1 whitespace-nowrap"
-                    data-tab="sla">SLA</button>
-            <button class="tab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 px-3 py-1 whitespace-nowrap"
-                    data-tab="availability">Server availability</button>
-            <button class="tab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 px-3 py-1 whitespace-nowrap"
-                    data-tab="icmp">ICMP</button>
-            <button class="tab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 px-3 py-1 whitespace-nowrap"
-                    data-tab="email">Email settings</button>
-            <button class="tab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 px-3 py-1 whitespace-nowrap"
-                    data-tab="incidents">Incidents</button>
-          </div>
-        </div>
-      </nav>
     </header>
 
-    <!-- Main content -->
-    <main class="flex-1">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <nav>
+        <div class="nav-tabs">
+            <button class="nav-tab active" data-tab="sla">SLA</button>
+            <button class="nav-tab" data-tab="availability">Server availability</button>
+            <button class="nav-tab" data-tab="icmp">ICMP</button>
+            <button class="nav-tab" data-tab="email">Email settings</button>
+            <button class="nav-tab" data-tab="incidents">Incidents</button>
+        </div>
+    </nav>
 
+    <main>
         <!-- SLA TAB -->
-        <section id="tab-sla" class="tab-view">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold text-gray-800">SLA / SLI</h2>
-            <div class="space-x-2">
-              <button id="btn-sla-refresh"
-                      class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
-                Update
-              </button>
-              <button id="btn-sla-download"
-                      class="px-3 py-1 rounded-md bg-gray-700 text-white text-sm hover:bg-gray-800">
-                Download XLSX
-              </button>
-              <button id="btn-sla-email"
-                      class="px-3 py-1 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-700">
-                Email report
-              </button>
-            </div>
-          </div>
+        <section id="tab-sla" class="tab active">
+            <h2>SLA / SLI</h2>
 
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <!-- Chart -->
-            <div class="lg:col-span-2 bg-white shadow rounded-lg p-4">
-              <h3 class="text-sm font-semibold text-gray-700 mb-2">Monthly SLI trend (first SLA/service)</h3>
-              <canvas id="sla-chart" height="120"></canvas>
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-title-row">
+                        <div>
+                            <div class="card-title">Monthly SLI trend (first SLA / service)</div>
+                            <div class="card-sub">Simple month-over-month view from Zabbix SLA</div>
+                        </div>
+                        <div class="actions-right">
+                            <button id="btn-sla-refresh" class="btn btn-primary">Update</button>
+                            <button id="btn-sla-download" class="btn btn-secondary">Download XLSX</button>
+                            <button id="btn-sla-email" class="btn btn-success">Email report</button>
+                        </div>
+                    </div>
+                    <div id="sla-trend-chart" class="muted">No data loaded yet.</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Summary</div>
+                    <div id="sla-summary" class="muted">No data loaded yet.</div>
+                </div>
             </div>
 
-            <!-- Summary -->
-            <div class="bg-white shadow rounded-lg p-4">
-              <h3 class="text-sm font-semibold text-gray-700 mb-2">Summary</h3>
-              <div id="sla-summary" class="text-sm text-gray-700 space-y-1">
-                <p class="text-gray-500">No data loaded yet.</p>
-              </div>
+            <div class="card">
+                <div class="card-title">Per-service SLI (latest month)</div>
+                <div class="card-sub">Based on first SLA returned from Zabbix</div>
+                <div id="sla-table-wrapper" class="muted">
+                    No data loaded yet.
+                </div>
             </div>
-          </div>
-
-          <!-- Table -->
-          <div class="mt-6 bg-white shadow rounded-lg p-4">
-            <div class="flex items-center justify-between mb-2">
-              <h3 class="text-lg font-semibold text-gray-800">Per-service SLI (latest month)</h3>
-            </div>
-            <div id="sla-table" class="overflow-x-auto text-sm text-gray-800">
-              <p class="text-gray-500">No data loaded yet.</p>
-            </div>
-          </div>
         </section>
 
-        <!-- AVAILABILITY TAB (placeholder, wired in JS) -->
-        <section id="tab-availability" class="tab-view hidden">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold text-gray-800">Server availability</h2>
-            <div class="space-x-2">
-              <button id="btn-avail-refresh"
-                      class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
-                Update
-              </button>
-              <button id="btn-avail-download"
-                      class="px-3 py-1 rounded-md bg-gray-700 text-white text-sm hover:bg-gray-800">
-                Download XLSX
-              </button>
+        <!-- AVAILABILITY (placeholder – backend is ready) -->
+        <section id="tab-availability" class="tab">
+            <h2>Server availability</h2>
+            <div class="card">
+                <div class="card-title-row">
+                    <div class="card-title">Availability report</div>
+                    <button id="btn-availability-download" class="btn btn-secondary">Download XLSX</button>
+                </div>
+                <div id="availability-content" class="muted">
+                    UI rendering not implemented yet, but XLSX export is available.
+                </div>
             </div>
-          </div>
-          <div class="bg-white shadow rounded-lg p-4">
-            <div id="avail-content" class="text-sm text-gray-700">
-              <p class="text-gray-500">No data loaded yet.</p>
-            </div>
-          </div>
         </section>
 
-        <!-- ICMP TAB (placeholder, wired in JS) -->
-        <section id="tab-icmp" class="tab-view hidden">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold text-gray-800">ICMP</h2>
-            <div class="space-x-2">
-              <button id="btn-icmp-refresh"
-                      class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
-                Update
-              </button>
-              <button id="btn-icmp-download"
-                      class="px-3 py-1 rounded-md bg-gray-700 text-white text-sm hover:bg-gray-800">
-                Download XLSX
-              </button>
+        <!-- ICMP (placeholder) -->
+        <section id="tab-icmp" class="tab">
+            <h2>ICMP</h2>
+            <div class="card">
+                <div class="card-title-row">
+                    <div class="card-title">ICMP report</div>
+                    <button id="btn-icmp-download" class="btn btn-secondary">Download XLSX</button>
+                </div>
+                <div id="icmp-content" class="muted">
+                    UI rendering not implemented yet, but XLSX export is available.
+                </div>
             </div>
-          </div>
-          <div class="bg-white shadow rounded-lg p-4">
-            <div id="icmp-content" class="text-sm text-gray-700">
-              <p class="text-gray-500">No data loaded yet.</p>
-            </div>
-          </div>
         </section>
 
-        <!-- EMAIL SETTINGS TAB (simple form) -->
-        <section id="tab-email" class="tab-view hidden">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold text-gray-800">Email settings</h2>
-            <button id="btn-email-save"
-                    class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
-              Save settings
-            </button>
-          </div>
-
-          <div class="bg-white shadow rounded-lg p-4 space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700">SMTP host</label>
-                <input id="smtp-host" type="text"
-                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">SMTP port</label>
-                <input id="smtp-port" type="number"
-                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">From address</label>
-                <input id="smtp-from" type="email"
-                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">To address (comma separated)</label>
-                <input id="smtp-to" type="text"
-                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
-              </div>
-              <div class="flex items-center space-x-2">
-                <input id="smtp-use-tls" type="checkbox"
-                       class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
-                <label class="text-sm font-medium text-gray-700">Use TLS</label>
-              </div>
-              <div class="flex items-center space-x-2">
-                <input id="smtp-use-auth" type="checkbox"
-                       class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
-                <label class="text-sm font-medium text-gray-700">Use authentication</label>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">Username</label>
-                <input id="smtp-username" type="text"
-                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">Password</label>
-                <input id="smtp-password" type="password"
-                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
-              </div>
+        <!-- EMAIL SETTINGS -->
+        <section id="tab-email" class="tab">
+            <h2>Email settings</h2>
+            <div class="card">
+                <div class="card-title">SMTP configuration</div>
+                <div class="muted">
+                    Email settings are managed via the backend configuration file.
+                    This tab is just a placeholder for now.
+                </div>
             </div>
-            <p id="email-settings-message" class="text-xs text-gray-500"></p>
-          </div>
         </section>
 
-        <!-- INCIDENTS TAB -->
-        <section id="tab-incidents" class="tab-view hidden">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold text-gray-800">Incident trends</h2>
-            <div class="space-x-2">
-              <button id="btn-inc-refresh"
-                      class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
-                Update
-              </button>
-              <button id="btn-inc-download"
-                      class="px-3 py-1 rounded-md bg-gray-700 text-white text-sm hover:bg-gray-800">
-                Download XLSX
-              </button>
-            </div>
-          </div>
+        <!-- INCIDENTS -->
+        <section id="tab-incidents" class="tab">
+            <h2>Incidents</h2>
 
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div class="lg:col-span-2 bg-white shadow rounded-lg p-4">
-              <h3 class="text-sm font-semibold text-gray-700 mb-2">Incidents per month by severity</h3>
-              <canvas id="inc-severity-chart" height="120"></canvas>
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-title">Severity overview (12 months)</div>
+                    <div id="incident-summary" class="muted">No data loaded yet.</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Needs investigation (&gt; 40 events / 30 days)</div>
+                    <div id="incident-investigate" class="muted">No data loaded yet.</div>
+                </div>
             </div>
-            <div class="bg-white shadow rounded-lg p-4">
-              <h3 class="text-sm font-semibold text-gray-700 mb-2">Generated</h3>
-              <p id="inc-generated" class="text-sm text-gray-700">No data loaded yet.</p>
-            </div>
-          </div>
 
-          <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div class="bg-white shadow rounded-lg p-4">
-              <h3 class="text-sm font-semibold text-gray-700 mb-2">Top triggers (Top 100)</h3>
-              <div id="inc-top-triggers" class="text-sm text-gray-700 overflow-x-auto">
-                <p class="text-gray-500">No data loaded yet.</p>
-              </div>
+            <div class="card">
+                <div class="card-title">Top 100 triggers (monthly counts)</div>
+                <div id="incident-top100" class="muted">No data loaded yet.</div>
             </div>
-            <div class="bg-white shadow rounded-lg p-4">
-              <h3 class="text-sm font-semibold text-gray-700 mb-2">Needs investigation (&gt;= 40 in 30 days)</h3>
-              <div id="inc-investigate" class="text-sm text-gray-700 overflow-x-auto">
-                <p class="text-gray-500">No data loaded yet.</p>
-              </div>
-            </div>
-          </div>
         </section>
-
-      </div>
     </main>
-  </div>
+</div>
 
-  <script src="app.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
