@@ -2,14 +2,16 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from io import BytesIO
+from . import config
 
 from .reports.sla import get_sla_sli as fetch_sla_sli
 from .reports import availability, icmp, host_info, utilization, firewall_if_usage, uptime_trend, incident_trends
 from .emailer import sender, settings_store
 
-# NEW: logging utils
+# logging utils
 from .logging_utils import setup_logging, get_log_level, set_log_level, tail_log
 
 # Initialize logging as early as possible
@@ -24,8 +26,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- SLA -----------------------------------------------------------------
+# Health / status endpoint
+@app.get("/api/status")
+def api_status():
+    """
+    Simple health/diagnostic endpoint.
+    """
+    return {
+        "status": "ok",
+        "zabbix_url": config.ZABBIX_URL,
+        "log_level": get_log_level(),
+    }
 
+# --- SLA -----------------------------------------------------------------
 @app.get("/api/reports/sla")
 def get_sla(periods: int = 12):
     return fetch_sla_sli(periods=periods)
@@ -167,3 +180,12 @@ def api_set_log_level(payload: dict):
 
     new_level = set_log_level(str(level))
     return {"level": new_level}
+
+# Serve frontend (index.html + app.js) from /
+FRONTEND_DIR = config.APP_ROOT / "frontend"
+
+app.mount(
+    "/",
+    StaticFiles(directory=str(FRONTEND_DIR), html=True),
+    name="frontend",
+)

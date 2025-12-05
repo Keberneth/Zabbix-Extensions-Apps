@@ -1,53 +1,255 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
   <title>Zabbix Report App</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Tailwind via CDN (good enough for internal tool) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body class="bg-gray-100">
-  <div id="app" class="min-h-screen flex flex-col">
-    <header class="bg-white shadow p-4 flex justify-between items-center">
-      <h1 class="text-xl font-semibold">Zabbix Report App</h1>
-      <nav class="space-x-4">
-        <button class="tab-btn" data-tab="sla">SLA</button>
-        <button class="tab-btn" data-tab="availability">Server availability</button>
-        <button class="tab-btn" data-tab="icmp">ICMP</button>
-        <button class="tab-btn" data-tab="settings">Email settings</button>
-        <button class="tab-btn" data-tab="incidents">Incidents</button>
+<body class="bg-gray-100 text-gray-900">
+  <div class="min-h-screen flex flex-col">
+    <!-- Top bar -->
+    <header class="bg-white shadow-sm">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+            Z
+          </div>
+          <div>
+            <h1 class="text-xl font-semibold">Zabbix Report App</h1>
+            <p class="text-xs text-gray-500">Internal reporting &amp; SLA dashboard</p>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4 text-xs">
+          <div id="status-pill" class="px-2 py-1 rounded-full bg-gray-200 text-gray-700">
+            Backend: unknown
+          </div>
+          <div class="hidden sm:block text-gray-400">|</div>
+          <div class="hidden sm:flex items-center space-x-2 text-gray-500">
+            <span class="font-mono text-[10px] sm:text-xs break-all" id="zabbix-url-display">
+              Zabbix URL: &mdash;
+            </span>
+          </div>
+        </div>
+      </div>
+      <!-- Tabs -->
+      <nav class="border-t border-gray-200 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex space-x-4 overflow-x-auto py-2 text-sm">
+            <button class="tab-btn border-b-2 border-blue-600 text-blue-600 px-3 py-1 whitespace-nowrap"
+                    data-tab="sla">SLA</button>
+            <button class="tab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 px-3 py-1 whitespace-nowrap"
+                    data-tab="availability">Server availability</button>
+            <button class="tab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 px-3 py-1 whitespace-nowrap"
+                    data-tab="icmp">ICMP</button>
+            <button class="tab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 px-3 py-1 whitespace-nowrap"
+                    data-tab="email">Email settings</button>
+            <button class="tab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 px-3 py-1 whitespace-nowrap"
+                    data-tab="incidents">Incidents</button>
+          </div>
+        </div>
       </nav>
     </header>
 
-    <main class="flex-1 p-4">
-      <section id="tab-sla" class="tab-view">
-        <div class="flex justify-between mb-4">
-          <h2 class="text-lg font-semibold">SLA/SLI</h2>
-          <div class="space-x-2">
-            <button id="btn-sla-refresh" class="px-3 py-1 bg-blue-600 text-white rounded">Update</button>
-            <button id="btn-sla-download" class="px-3 py-1 border rounded">Download XLSX</button>
-            <button id="btn-sla-email" class="px-3 py-1 border rounded">Email report</button>
-          </div>
-        </div>
-        <canvas id="sla-chart" height="80"></canvas>
-        <div id="sla-table" class="mt-4"></div>
-      </section>
+    <!-- Main content -->
+    <main class="flex-1">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-      <section id="tab-incidents" class="tab-view hidden">
-        <div class="flex justify-between mb-4">
-          <h2 class="text-lg font-semibold">Incident Trends</h2>
-          <div class="space-x-2">
-            <button id="btn-inc-refresh" class="px-3 py-1 bg-blue-600 text-white rounded">Refresh</button>
-            <button id="btn-inc-download" class="px-3 py-1 border rounded">Download CSV</button>
+        <!-- SLA TAB -->
+        <section id="tab-sla" class="tab-view">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-800">SLA / SLI</h2>
+            <div class="space-x-2">
+              <button id="btn-sla-refresh"
+                      class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
+                Update
+              </button>
+              <button id="btn-sla-download"
+                      class="px-3 py-1 rounded-md bg-gray-700 text-white text-sm hover:bg-gray-800">
+                Download XLSX
+              </button>
+              <button id="btn-sla-email"
+                      class="px-3 py-1 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-700">
+                Email report
+              </button>
+            </div>
           </div>
-        </div>
-        <canvas id="incident-severity-chart" height="80"></canvas>
-        <div id="incident-top100" class="mt-4"></div>
-        <div id="incident-investigate" class="mt-4"></div>
-      </section>
 
-      <!-- other sections: availability, icmp, settings... -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- Chart -->
+            <div class="lg:col-span-2 bg-white shadow rounded-lg p-4">
+              <h3 class="text-sm font-semibold text-gray-700 mb-2">Monthly SLI trend (first SLA/service)</h3>
+              <canvas id="sla-chart" height="120"></canvas>
+            </div>
+
+            <!-- Summary -->
+            <div class="bg-white shadow rounded-lg p-4">
+              <h3 class="text-sm font-semibold text-gray-700 mb-2">Summary</h3>
+              <div id="sla-summary" class="text-sm text-gray-700 space-y-1">
+                <p class="text-gray-500">No data loaded yet.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="mt-6 bg-white shadow rounded-lg p-4">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-lg font-semibold text-gray-800">Per-service SLI (latest month)</h3>
+            </div>
+            <div id="sla-table" class="overflow-x-auto text-sm text-gray-800">
+              <p class="text-gray-500">No data loaded yet.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- AVAILABILITY TAB (placeholder, wired in JS) -->
+        <section id="tab-availability" class="tab-view hidden">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-800">Server availability</h2>
+            <div class="space-x-2">
+              <button id="btn-avail-refresh"
+                      class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
+                Update
+              </button>
+              <button id="btn-avail-download"
+                      class="px-3 py-1 rounded-md bg-gray-700 text-white text-sm hover:bg-gray-800">
+                Download XLSX
+              </button>
+            </div>
+          </div>
+          <div class="bg-white shadow rounded-lg p-4">
+            <div id="avail-content" class="text-sm text-gray-700">
+              <p class="text-gray-500">No data loaded yet.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ICMP TAB (placeholder, wired in JS) -->
+        <section id="tab-icmp" class="tab-view hidden">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-800">ICMP</h2>
+            <div class="space-x-2">
+              <button id="btn-icmp-refresh"
+                      class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
+                Update
+              </button>
+              <button id="btn-icmp-download"
+                      class="px-3 py-1 rounded-md bg-gray-700 text-white text-sm hover:bg-gray-800">
+                Download XLSX
+              </button>
+            </div>
+          </div>
+          <div class="bg-white shadow rounded-lg p-4">
+            <div id="icmp-content" class="text-sm text-gray-700">
+              <p class="text-gray-500">No data loaded yet.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- EMAIL SETTINGS TAB (simple form) -->
+        <section id="tab-email" class="tab-view hidden">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-800">Email settings</h2>
+            <button id="btn-email-save"
+                    class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
+              Save settings
+            </button>
+          </div>
+
+          <div class="bg-white shadow rounded-lg p-4 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">SMTP host</label>
+                <input id="smtp-host" type="text"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">SMTP port</label>
+                <input id="smtp-port" type="number"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">From address</label>
+                <input id="smtp-from" type="email"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">To address (comma separated)</label>
+                <input id="smtp-to" type="text"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
+              </div>
+              <div class="flex items-center space-x-2">
+                <input id="smtp-use-tls" type="checkbox"
+                       class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
+                <label class="text-sm font-medium text-gray-700">Use TLS</label>
+              </div>
+              <div class="flex items-center space-x-2">
+                <input id="smtp-use-auth" type="checkbox"
+                       class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
+                <label class="text-sm font-medium text-gray-700">Use authentication</label>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Username</label>
+                <input id="smtp-username" type="text"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Password</label>
+                <input id="smtp-password" type="password"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" />
+              </div>
+            </div>
+            <p id="email-settings-message" class="text-xs text-gray-500"></p>
+          </div>
+        </section>
+
+        <!-- INCIDENTS TAB -->
+        <section id="tab-incidents" class="tab-view hidden">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-800">Incident trends</h2>
+            <div class="space-x-2">
+              <button id="btn-inc-refresh"
+                      class="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
+                Update
+              </button>
+              <button id="btn-inc-download"
+                      class="px-3 py-1 rounded-md bg-gray-700 text-white text-sm hover:bg-gray-800">
+                Download XLSX
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div class="lg:col-span-2 bg-white shadow rounded-lg p-4">
+              <h3 class="text-sm font-semibold text-gray-700 mb-2">Incidents per month by severity</h3>
+              <canvas id="inc-severity-chart" height="120"></canvas>
+            </div>
+            <div class="bg-white shadow rounded-lg p-4">
+              <h3 class="text-sm font-semibold text-gray-700 mb-2">Generated</h3>
+              <p id="inc-generated" class="text-sm text-gray-700">No data loaded yet.</p>
+            </div>
+          </div>
+
+          <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="bg-white shadow rounded-lg p-4">
+              <h3 class="text-sm font-semibold text-gray-700 mb-2">Top triggers (Top 100)</h3>
+              <div id="inc-top-triggers" class="text-sm text-gray-700 overflow-x-auto">
+                <p class="text-gray-500">No data loaded yet.</p>
+              </div>
+            </div>
+            <div class="bg-white shadow rounded-lg p-4">
+              <h3 class="text-sm font-semibold text-gray-700 mb-2">Needs investigation (&gt;= 40 in 30 days)</h3>
+              <div id="inc-investigate" class="text-sm text-gray-700 overflow-x-auto">
+                <p class="text-gray-500">No data loaded yet.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
     </main>
   </div>
 

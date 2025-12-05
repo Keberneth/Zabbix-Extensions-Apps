@@ -38,7 +38,7 @@ mkdir /etc/zabbix_report
 vi /etc/zabbix_report/token
 chown root:nginx /etc/zabbix_report /etc/zabbix_report/token
 chmod 0750 /etc/zabbix_report
-chmod 0640 /etc/zabbix_report/token
+chmod 0660 /etc/zabbix_report/token
 chattr +i /etc/zabbix_report/token
 
 ## Change port if needed
