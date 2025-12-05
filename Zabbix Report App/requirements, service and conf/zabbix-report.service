@@ -4,30 +4,27 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=zabbix
-Group=zabbix
+User=root
+Group=root
 WorkingDirectory=/opt/zabbix_report
 
 Environment="ZABBIX_API_TOKEN=/etc/zabbix_report/token"
-Environment="ZABBIX_URL=https://your-zabbix-url/api_jsonrpc.php"
+Environment="ZABBIX_URL=https://your.domain.name/api_jsonrpc.php"
 Environment="PYTHONUNBUFFERED=1"
 
-ExecStart=/usr/bin/python3 -m uvicorn main:app \
+ExecStart=/usr/bin/python3 -m uvicorn backend.main:app \
     --host 127.0.0.1 \
     --port 8081 \
     --workers 4 \
     --timeout-keep-alive 75
 
-Restart=always
-RestartSec=5
-
-# Security hardening
 PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
+ProtectSystem=full
+ProtectHome=false
 ProtectKernelTunables=true
 ProtectKernelModules=true
 NoNewPrivileges=true
+ReadOnlyPaths=/opt/zabbix_report
 ReadWritePaths=/opt/zabbix_report/data
 ReadWritePaths=/var/log/zabbix-report
 RuntimeDirectory=zabbix-report

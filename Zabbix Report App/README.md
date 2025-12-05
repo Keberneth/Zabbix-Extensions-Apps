@@ -25,12 +25,21 @@ pip install fastapi uvicorn[standard] requests openpyxl python-multipart email-v
 /otp/zabbix_report/
 
 ## Create the service file
-/etc/systemd/system/zabbix-report.service
+vi /etc/systemd/system/zabbix-report.service
 
 ## Update environment varibles in .service
 Environment="ZABBIX_API_TOKEN=/etc/zabbix_report/token"<br/>
 Environment="ZABBIX_URL=https://your-zabbix-url/api_jsonrpc.php"<br/>
 Environment="PYTHONUNBUFFERED=1"
+
+# Create the token file
+mkdir /etc/zabbix_report
+# add the api key to the file
+vi /etc/zabbix_report/token
+chown root:nginx /etc/zabbix_report /etc/zabbix_report/token
+chmod 0750 /etc/zabbix_report
+chmod 0640 /etc/zabbix_report/token
+chattr +i /etc/zabbix_report/token
 
 ## Change port if needed
 --port 8081 \
@@ -43,6 +52,18 @@ sudo chown -R root:root /opt/zabbix_report<br/>
 sudo chmod -R 755 /opt/zabbix_report<br/>
 sudo chown -R zabbix:zabbix /opt/zabbix_report/data<br/>
 sudo chmod -R 750 /opt/zabbix_report/data<br/>
+
+sudo mkdir -p /opt/zabbix_report/data
+sudo mkdir -p /var/log/zabbix-report
+sudo chown nginx:nginx /opt/zabbix_report/data /var/log/zabbix-report
+sudo chmod 750 /opt/zabbix_report/data /var/log/zabbix-report
+sudo systemctl restart zabbix-report
+
+mkdir -p /opt/zabbix_report/backend/emailer/reports
+touch /opt/zabbix_report/backend/__init__.py
+touch /opt/zabbix_report/backend/emailer/__init__.py
+touch /opt/zabbix_report/backend/emailer/reports/__init__.py
+systemctl restart zabbix-report
 
 ## Fix logging folder and permissions
 sudo mkdir -p /var/log/zabbix-report<br/>
