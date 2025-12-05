@@ -1,18 +1,27 @@
-# main.py
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+# backend/main.py
 from pathlib import Path
 from io import BytesIO
+import io
+import csv
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
 from . import config
-
 from .reports.sla import get_sla_sli as fetch_sla_sli
-from .reports import availability, icmp, host_info, utilization, firewall_if_usage, uptime_trend, incident_trends
+from .reports import (
+    availability,
+    icmp,
+    host_info,
+    utilization,
+    firewall_if_usage,
+    uptime_trend,
+    incident_trends,
+)
 from .emailer import sender, settings_store
-
-# logging utils
-from .logging_utils import setup_logging, get_log_level, set_log_level, tail_log
+from .logging_utils import setup_logging, get_log_level, set_log_level, tail_log  # 
 
 # Initialize logging as early as possible
 setup_logging()
@@ -26,60 +35,178 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Health / status endpoint
+# ---------------------------------------------------------------------------
+# Status
+# ---------------------------------------------------------------------------
+
 @app.get("/api/status")
 def api_status():
     """
-    Simple health/diagnostic endpoint.
+    Lightweight health endpoint for the GUI.
     """
     return {
         "status": "ok",
         "zabbix_url": config.ZABBIX_URL,
-        "log_level": get_log_level(),
     }
 
-# --- SLA -----------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# SLA / SLI
+# ---------------------------------------------------------------------------
+
 @app.get("/api/reports/sla")
 def get_sla(periods: int = 12):
-    return fetch_sla_sli(periods=periods)
+    return fetch_sla_sli(periods=periods)  # :contentReference[oaicite:2]{index=2}
+
 
 @app.get("/api/reports/sla/download")
 def download_sla(format: str = "xlsx"):
-    from .reports.sla_download import create_sla_xlsx_bytes
-    if format != "xlsx":
+    from .reports.sla_download import create_sla_xlsx_bytes  # :contentReference[oaicite:3]{index=3}
+
+    if format.lower() != "xlsx":
         raise HTTPException(400, "Only xlsx supported for now")
+
     data = create_sla_xlsx_bytes(fetch_sla_sli())
     return StreamingResponse(
         data,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="sla_report.xlsx"'}
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": 'attachment; filename="sla_report.xlsx"'},
     )
 
-# (existing report + email endpoints unchanged)… 
+# ---------------------------------------------------------------------------
+# Availability
+# ---------------------------------------------------------------------------
 
-# --- Email settings -------------------------------------------------------
+@app.get("/api/reports/availability")
+def api_availability(days: int = 30):
+    """
+    JSON availability per host (de-duplicated across groups). :contentReference[oaicite:4]{index=4}
+    """
+    return availability.get_availability(days=days)
 
-@app.get("/api/email/settings")
-def get_email_settings():
-    return settings_store.get_settings()
 
-@app.put("/api/email/settings")
-def update_email_settings(settings: dict):
-    settings_store.save_settings(settings)
-    return {"status": "ok"}
+@app.get("/api/reports/availability/download")
+def download_availability(days: int = 30):
+    rows = availability.get_availability(days=days)
+    buf = io.StringIO()
+    w = csv.writer(buf)
 
-@app.post("/api/email/send-report")
-def send_report(payload: dict):
-    sender.send_report_email(payload)
-    return {"status": "sent"}
+    if rows:
+        header = list(rows[0].keys())
+        w.writerow(header)
+        for r in rows:
+            w.writerow([r.get(k, "") for k in header])
 
-# --- Uptime trend ---------------------------------------------------------
+    buf.seek(0)
+    byte_buf = BytesIO(buf.getvalue().encode("utf-8"))
+    return StreamingResponse(
+        byte_buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="availability.csv"'},
+    )
+
+# ---------------------------------------------------------------------------
+# ICMP
+# ---------------------------------------------------------------------------
+
+@app.get("/api/reports/icmp")
+def api_icmp(days: int = 30):
+    """
+    ICMP history for FW/switch groups (default). :contentReference[oaicite:5]{index=5}
+    """
+    return icmp.get_icmp_history(days=days)
+
+
+@app.get("/api/reports/icmp/download")
+def download_icmp(days: int = 30):
+    docs = icmp.get_icmp_history(days=days)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+
+    header = [
+        "hostid",
+        "host",
+        "name",
+        "clock",
+        "value",
+        "itemid",
+        "item_name",
+        "key_",
+    ]
+    w.writerow(header)
+
+    for d in docs:
+        item = d.get("item", {})
+        for h in d.get("history", []):
+            w.writerow(
+                [
+                    d.get("hostid", ""),
+                    d.get("host", ""),
+                    d.get("name", ""),
+                    h.get("clock", ""),
+                    h.get("value", ""),
+                    item.get("itemid", ""),
+                    item.get("name", ""),
+                    item.get("key_", ""),
+                ]
+            )
+
+    buf.seek(0)
+    byte_buf = BytesIO(buf.getvalue().encode("utf-8"))
+    return StreamingResponse(
+        byte_buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="icmp_history.csv"'},
+    )
+
+# ---------------------------------------------------------------------------
+# Host information
+# ---------------------------------------------------------------------------
+
+@app.get("/api/reports/host-info")
+def api_host_info():
+    """
+    Static host inventory info (OS, RAM, cores, disks). :contentReference[oaicite:6]{index=6}
+    """
+    return host_info.get_host_info()
+
+# ---------------------------------------------------------------------------
+# Service utilization (CPU / RAM)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/reports/utilization")
+def api_utilization(days: int = 30):
+    """
+    Per-host CPU/RAM utilization for processes/services. :contentReference[oaicite:7]{index=7}
+    """
+    return utilization.get_service_utilization(days=days)
+
+# ---------------------------------------------------------------------------
+# Firewall interface usage
+# ---------------------------------------------------------------------------
+
+@app.get("/api/reports/firewall-if-usage")
+def api_firewall_if_usage(days: int = 30):
+    """
+    Bits sent history for FW interfaces. :contentReference[oaicite:8]{index=8}
+    """
+    return firewall_if_usage.get_firewall_interface_usage(days=days)
+
+# ---------------------------------------------------------------------------
+# Uptime trend (12-month rolling, using persistent cache)
+# ---------------------------------------------------------------------------
 
 @app.get("/api/reports/uptime-trend")
 def get_uptime_trend(months: int = 12, refresh: bool = True):
+    """
+    Returns last `months` of uptime per host from cache, optionally refreshing
+    cache using recent availability data. :contentReference[oaicite:9]{index=9}
+    """
     if refresh:
         uptime_trend.refresh_from_recent(days=35)
     return uptime_trend.get_uptime_trend(months=months)
+
 
 @app.get("/api/reports/uptime-trend/download")
 def download_uptime_trend(months: int = 12, format: str = "csv"):
@@ -88,9 +215,6 @@ def download_uptime_trend(months: int = 12, format: str = "csv"):
 
     uptime_trend.refresh_from_recent(days=35)
     data = uptime_trend.get_uptime_trend(months=months)
-
-    import csv
-    import io
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -104,7 +228,7 @@ def download_uptime_trend(months: int = 12, format: str = "csv"):
         writer.writerow(row)
 
     buf.seek(0)
-    byte_buf = io.BytesIO(buf.getvalue().encode("utf-8"))
+    byte_buf = BytesIO(buf.getvalue().encode("utf-8"))
 
     filename = f"uptime_trend_{months}m.csv"
     return StreamingResponse(
@@ -113,30 +237,39 @@ def download_uptime_trend(months: int = 12, format: str = "csv"):
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
-# --- Incident trends ------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Incident trends (12-month + 30-day “needs investigation”)
+# ---------------------------------------------------------------------------
 
 @app.get("/api/reports/incidents/refresh")
 def refresh_incidents(months: int = 12):
-    incident_trends.refresh_incident_cache(months=months)
+    incident_trends.refresh_incident_cache(months=months)  # :contentReference[oaicite:10]{index=10}
     return {"status": "ok"}
 
+
 @app.get("/api/reports/incidents")
-def get_incidents(months: int = 12):
+def get_incidents(months: int = 12, refresh: bool = True):
+    """
+    By default, refresh the incident cache before returning data so the GUI
+    always works without calling the refresh URL manually.
+    """
+    if refresh:
+        incident_trends.refresh_incident_cache(months=months)
     return incident_trends.get_incident_trends(months=months)
+
 
 @app.get("/api/reports/incidents/download")
 def download_incidents(months: int = 12):
-    import csv, io
     data = incident_trends.get_incident_trends(months)
 
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["triggerid", "count"])
-    for tid, cnt in data["top_100_triggers"]:
+    for tid, cnt in data.get("top_100_triggers", []):
         w.writerow([tid, cnt])
 
     buf.seek(0)
-    byte_buf = io.BytesIO(buf.getvalue().encode("utf-8"))
+    byte_buf = BytesIO(buf.getvalue().encode("utf-8"))
 
     return StreamingResponse(
         byte_buf,
@@ -144,15 +277,67 @@ def download_incidents(months: int = 12):
         headers={"Content-Disposition": 'attachment; filename="incident_top100.csv"'},
     )
 
-# --- Logging API ----------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Email settings + reporting
+# ---------------------------------------------------------------------------
+
+@app.get("/api/email/settings")
+def get_email_settings():
+    return settings_store.get_settings()  # :contentReference[oaicite:11]{index=11}
+
+
+@app.put("/api/email/settings")
+def update_email_settings(settings: dict):
+    settings_store.save_settings(settings)
+    return {"status": "ok"}
+
+
+# Accept POST as well so the frontend can use either.
+@app.post("/api/email/settings")
+def update_email_settings_post(settings: dict):
+    settings_store.save_settings(settings)
+    return {"status": "ok"}
+
+
+@app.post("/api/email/send-report")
+def send_report(payload: dict):
+    """
+    Generic email-sending entrypoint, expects the payload format described
+    in sender.send_report_email.
+    """
+    sender.send_report_email(payload)  # :contentReference[oaicite:12]{index=12}
+    return {"status": "sent"}
+
+
+@app.post("/api/email/send-sla")
+def send_sla_email():
+    """
+    Convenience endpoint used by the GUI: send latest SLA report to default
+    recipients stored in email settings (field: to_addr).
+    """
+    settings = settings_store.get_settings()
+    recipients = settings.get("to_addr") or []
+    if not recipients:
+        raise HTTPException(
+            400, "No default recipients (to_addr) configured in email settings"
+        )
+
+    payload = {
+        "report_type": "sla",
+        "format": "xlsx",
+        "to": recipients,
+        "subject": "SLA report",
+        "body": "Zabbix SLA/SLI report.",
+    }
+    sender.send_report_email(payload)
+    return {"status": "sent"}
+
+# ---------------------------------------------------------------------------
+# Logging API
+# ---------------------------------------------------------------------------
 
 @app.get("/api/logs")
 def api_get_logs(lines: int = 200):
-    """
-    Return the last `lines` log lines plus current log level.
-
-    GUI can show this as a scrollable text area.
-    """
     return {
         "level": get_log_level(),
         "lines": tail_log(lines),
@@ -161,19 +346,11 @@ def api_get_logs(lines: int = 200):
 
 @app.get("/api/logs/level")
 def api_get_log_level():
-    """
-    Get current log level.
-    """
     return {"level": get_log_level()}
 
 
 @app.put("/api/logs/level")
 def api_set_log_level(payload: dict):
-    """
-    Set log level. Example payload: {"level": "INFO"}.
-
-    Supported values: DEBUG, INFO, WARNING, ERROR, CRITICAL (case-insensitive).
-    """
     level = payload.get("level")
     if not level:
         raise HTTPException(400, "Missing 'level' in payload")
@@ -181,7 +358,10 @@ def api_set_log_level(payload: dict):
     new_level = set_log_level(str(level))
     return {"level": new_level}
 
-# Serve frontend (index.html + app.js) from /
+# ---------------------------------------------------------------------------
+# Static frontend
+# ---------------------------------------------------------------------------
+
 FRONTEND_DIR = config.APP_ROOT / "frontend"
 
 app.mount(

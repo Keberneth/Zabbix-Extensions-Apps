@@ -11,25 +11,6 @@ const tabLoaded = {
   incidents: false,
 };
 
-function setStatus(text, ok, zabbixUrl) {
-  const pill = document.getElementById("status-pill");
-  if (!pill) return;
-
-  pill.textContent = text;
-  if (ok) {
-    pill.className =
-      "px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs";
-  } else {
-    pill.className =
-      "px-2 py-1 rounded-full bg-red-100 text-red-800 border border-red-300 text-xs";
-  }
-
-  const zbx = document.getElementById("zabbix-url-display");
-  if (zbx && zabbixUrl) {
-    zbx.textContent = `Zabbix URL: ${zabbixUrl}`;
-  }
-}
-
 async function fetchJson(url, options = {}) {
   const res = await fetch(url, options);
   if (!res.ok) {
@@ -41,13 +22,32 @@ async function fetchJson(url, options = {}) {
 
 /* ---------------------- STATUS ---------------------- */
 
+function setStatus(text, ok, zabbixUrl) {
+  const pill = document.getElementById("status-pill");
+  if (pill) {
+    pill.textContent = text;
+    if (ok) {
+      pill.className =
+        "px-3 py-1 rounded-full text-xs border border-emerald-300 bg-emerald-100 text-emerald-800";
+    } else {
+      pill.className =
+        "px-3 py-1 rounded-full text-xs border border-red-300 bg-red-100 text-red-800";
+    }
+  }
+
+  const zbx = document.getElementById("zabbix-url-display");
+  if (zbx) {
+    zbx.textContent = zabbixUrl || "—";
+  }
+}
+
 async function loadStatus() {
   try {
     const data = await fetchJson("/api/status");
     setStatus("Backend: OK", true, data.zabbix_url || "");
   } catch (err) {
     console.error("Failed to load status", err);
-    setStatus("Backend: ERROR", false);
+    setStatus("Backend: ERROR", false, "");
   }
 }
 
@@ -104,7 +104,7 @@ function renderSLATable(rows) {
 
   if (!rows.length) {
     container.innerHTML =
-      '<p class="text-gray-500">No SLA data returned from backend.</p>';
+      '<p class="text-gray-500 text-sm">No SLA data returned from backend.</p>';
     return;
   }
 
@@ -144,7 +144,7 @@ function renderSLASummary(rows) {
 
   if (!rows.length) {
     container.innerHTML =
-      '<p class="text-gray-500">No SLA data returned from backend.</p>';
+      '<p class="text-gray-500 text-sm">No SLA data returned from backend.</p>';
     return;
   }
 
@@ -182,9 +182,7 @@ function renderSLAChart(firstService) {
     return Number.isNaN(num) ? null : num;
   });
 
-  if (slaChart) {
-    slaChart.destroy();
-  }
+  if (slaChart) slaChart.destroy();
 
   const ctx = canvas.getContext("2d");
   slaChart = new Chart(ctx, {
@@ -202,9 +200,7 @@ function renderSLAChart(firstService) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { display: true },
-      },
+      plugins: { legend: { display: true } },
       scales: {
         y: {
           beginAtZero: true,
@@ -218,9 +214,13 @@ function renderSLAChart(firstService) {
 
 async function loadSLA() {
   const tableContainer = document.getElementById("sla-table");
+  const trendContainer = document.getElementById("sla-trend-status");
   if (tableContainer) {
     tableContainer.innerHTML =
       '<p class="text-xs text-gray-500">Loading SLA data...</p>';
+  }
+  if (trendContainer) {
+    trendContainer.textContent = "Loading SLA data...";
   }
 
   try {
@@ -229,10 +229,19 @@ async function loadSLA() {
     renderSLATable(rows);
     renderSLASummary(rows);
     renderSLAChart(firstService);
+
+    if (trendContainer) {
+      trendContainer.textContent = rows.length
+        ? ""
+        : "No data returned from backend.";
+    }
   } catch (err) {
     console.error("Failed to load SLA data", err);
     if (tableContainer) {
       tableContainer.innerHTML = `<p class="text-red-600 text-sm">Failed to load SLA data: ${err.message}</p>`;
+    }
+    if (trendContainer) {
+      trendContainer.textContent = `Failed to load SLA data: ${err.message}`;
     }
   }
 }
@@ -248,36 +257,29 @@ function renderIncidentSeverityChart(data) {
   if (!canvas) return;
 
   const labels = data.month_labels || [];
-  const severity = data.severity || {};
+  const sevObj = data.severity || {};
 
-  const datasets = Object.entries(severity).map(([sev, counts]) => ({
-    label: sev,
-    data: counts || [],
-  }));
-
-  if (!labels.length || !datasets.length) {
+  if (!labels.length || !Object.keys(sevObj).length) {
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     return;
   }
 
-  if (incSeverityChart) {
-    incSeverityChart.destroy();
-  }
+  const datasets = Object.entries(sevObj).map(([sev, monthMap]) => {
+    const arr = labels.map((m) => (monthMap[m] ?? 0));
+    return { label: sev, data: arr, stack: "incidents" };
+  });
+
+  if (incSeverityChart) incSeverityChart.destroy();
 
   const ctx = canvas.getContext("2d");
   incSeverityChart = new Chart(ctx, {
     type: "bar",
-    data: {
-      labels,
-      datasets,
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { position: "bottom" },
-      },
+      plugins: { legend: { position: "bottom" } },
       scales: {
         x: { stacked: true },
         y: { stacked: true, beginAtZero: true },
@@ -293,7 +295,7 @@ function renderIncTopTriggers(data) {
   const items = data.top_100_triggers || [];
   if (!items.length) {
     container.innerHTML =
-      '<p class="text-gray-500">No trigger data returned.</p>';
+      '<p class="text-gray-500 text-sm">No trigger data returned.</p>';
     return;
   }
 
@@ -301,7 +303,7 @@ function renderIncTopTriggers(data) {
     <table class="min-w-full divide-y divide-gray-200 text-sm">
       <thead class="bg-gray-50">
         <tr>
-          <th class="px-3 py-2 text-left font-semibold text-gray-700">Trigger</th>
+          <th class="px-3 py-2 text-left font-semibold text-gray-700">Trigger ID</th>
           <th class="px-3 py-2 text-right font-semibold text-gray-700">Count</th>
         </tr>
       </thead>
@@ -309,12 +311,11 @@ function renderIncTopTriggers(data) {
   `;
 
   for (const entry of items) {
-    // incident_trends.py returns list of [trigger_key, count]
-    const triggerKey = Array.isArray(entry) ? entry[0] : entry.trigger || "";
+    const triggerId = Array.isArray(entry) ? entry[0] : entry.triggerid || "";
     const count = Array.isArray(entry) ? entry[1] : entry.count || 0;
     html += `
       <tr>
-        <td class="px-3 py-1">${triggerKey}</td>
+        <td class="px-3 py-1">${triggerId}</td>
         <td class="px-3 py-1 text-right">${count}</td>
       </tr>
     `;
@@ -331,7 +332,7 @@ function renderIncInvestigate(data) {
   const items = data.investigate || [];
   if (!items.length) {
     container.innerHTML =
-      '<p class="text-gray-500">No incidents currently flagged for investigation.</p>';
+      '<p class="text-gray-500 text-sm">No incidents currently flagged for investigation.</p>';
     return;
   }
 
@@ -339,19 +340,22 @@ function renderIncInvestigate(data) {
     <table class="min-w-full divide-y divide-gray-200 text-sm">
       <thead class="bg-gray-50">
         <tr>
-          <th class="px-3 py-2 text-left font-semibold text-gray-700">Key</th>
-          <th class="px-3 py-2 text-right font-semibold text-gray-700">Count</th>
+          <th class="px-3 py-2 text-left font-semibold text-gray-700">Trigger</th>
+          <th class="px-3 py-2 text-left font-semibold text-gray-700">Severity</th>
+          <th class="px-3 py-2 text-right font-semibold text-gray-700">Count (30d)</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100 bg-white">
   `;
 
   for (const entry of items) {
-    const key = Array.isArray(entry) ? entry[0] : entry.key || "";
-    const count = Array.isArray(entry) ? entry[1] : entry.count || 0;
+    const descr = entry.description || entry.triggerid || "";
+    const sev = entry.priority || "";
+    const count = entry.count_30d || 0;
     html += `
       <tr>
-        <td class="px-3 py-1">${key}</td>
+        <td class="px-3 py-1">${descr}</td>
+        <td class="px-3 py-1">${sev}</td>
         <td class="px-3 py-1 text-right">${count}</td>
       </tr>
     `;
@@ -359,6 +363,18 @@ function renderIncInvestigate(data) {
 
   html += "</tbody></table>";
   container.innerHTML = html;
+}
+
+function setIncGenerated(ts) {
+  const el = document.getElementById("inc-generated");
+  if (!el) return;
+
+  if (!ts) {
+    el.textContent = "Generated time not provided by backend.";
+    return;
+  }
+  const d = new Date(ts * 1000);
+  el.textContent = d.toLocaleString();
 }
 
 async function loadIncidents() {
@@ -370,13 +386,7 @@ async function loadIncidents() {
 
   try {
     const data = await fetchJson("/api/reports/incidents");
-
-    const genElem = document.getElementById("inc-generated");
-    if (genElem) {
-      genElem.textContent =
-        data.generated_at || "Generated time not provided by backend.";
-    }
-
+    setIncGenerated(data.generated_at);
     renderIncidentSeverityChart(data);
     renderIncTopTriggers(data);
     renderIncInvestigate(data);
@@ -389,11 +399,10 @@ async function loadIncidents() {
 }
 
 function downloadIncidents() {
-  // adjust if backend exposes a different download path
   window.location.href = "/api/reports/incidents/download";
 }
 
-/* ---------------------- AVAILABILITY & ICMP (simple stubs) ---------------------- */
+/* ---------------------- AVAILABILITY & ICMP ---------------------- */
 
 async function loadAvailability() {
   const container = document.getElementById("avail-content");
@@ -453,6 +462,7 @@ async function loadEmailSettings() {
   const msg = document.getElementById("email-settings-message");
   if (msg) {
     msg.textContent = "Loading settings...";
+    msg.className = "text-xs text-gray-500";
   }
   try {
     const data = await fetchJson("/api/email/settings");
@@ -467,6 +477,7 @@ async function loadEmailSettings() {
 
     if (msg) {
       msg.textContent = "Settings loaded.";
+      msg.className = "text-xs text-emerald-600";
     }
   } catch (err) {
     console.error("Failed to load email settings", err);
@@ -500,7 +511,7 @@ async function saveEmailSettings() {
     };
 
     await fetchJson("/api/email/settings", {
-      method: "POST",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
@@ -533,7 +544,6 @@ async function sendSLAEmail() {
 /* ---------------------- TABS ---------------------- */
 
 function activateTab(tabName) {
-  // views
   document.querySelectorAll(".tab-view").forEach((section) => {
     section.classList.add("hidden");
   });
@@ -542,16 +552,18 @@ function activateTab(tabName) {
     activeSection.classList.remove("hidden");
   }
 
-  // buttons
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === tabName) {
+      btn.classList.add(
+        "border-blue-600",
+        "text-blue-600"
+      );
       btn.classList.remove(
         "border-transparent",
         "text-gray-600",
         "hover:text-gray-900",
         "hover:border-gray-300"
       );
-      btn.classList.add("border-blue-600", "text-blue-600");
     } else {
       btn.classList.remove("border-blue-600", "text-blue-600");
       btn.classList.add(
@@ -563,7 +575,6 @@ function activateTab(tabName) {
     }
   });
 
-  // lazy-load data per tab
   if (!tabLoaded[tabName]) {
     tabLoaded[tabName] = true;
     if (tabName === "sla") loadSLA();
@@ -586,7 +597,7 @@ function setupTabs() {
 /* ---------------------- WIRE UP ---------------------- */
 
 document.addEventListener("DOMContentLoaded", () => {
-  // buttons
+  // Buttons
   const btnSlaRefresh = document.getElementById("btn-sla-refresh");
   if (btnSlaRefresh) btnSlaRefresh.addEventListener("click", loadSLA);
 
@@ -600,7 +611,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnIncRefresh) btnIncRefresh.addEventListener("click", loadIncidents);
 
   const btnIncDownload = document.getElementById("btn-inc-download");
-  if (btnIncDownload) btnIncDownload.addEventListener("click", downloadIncidents);
+  if (btnIncDownload)
+    btnIncDownload.addEventListener("click", downloadIncidents);
 
   const btnAvailRefresh = document.getElementById("btn-avail-refresh");
   if (btnAvailRefresh) btnAvailRefresh.addEventListener("click", loadAvailability);
@@ -620,7 +632,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
   setupTabs();
   loadStatus();
-
-  // default tab
   activateTab("sla");
 });
