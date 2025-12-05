@@ -2,15 +2,7 @@ import smtplib
 from email.message import EmailMessage
 
 from .settings_store import get_settings
-from backend.reports.sla_download import create_sla_xlsx_bytes
-from backend.reports.sla import create_sla_report
-from backend.reports.availability import create_availability_report
-from backend.reports.uptime_trend import create_uptime_trend_report
-from backend.reports.incident_trends import create_incident_trends_report
-from backend.reports.icmp import create_icmp_report
-from backend.reports.host_info import create_host_info_report
-from backend.reports.firewall_if_usage import create_firewall_if_usage_report
-from backend.reports.utilization import create_utilization_report
+from ..reports.sla_download import create_sla_xlsx_bytes
 
 def send_report_email(payload: dict) -> None:
     """
