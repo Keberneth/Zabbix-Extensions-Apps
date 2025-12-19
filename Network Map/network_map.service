@@ -1,13 +1,30 @@
+# /etc/systemd/system/network-map.service
 [Unit]
 Description=Zabbix Network Map API
 After=network.target
+Wants=network.target
 
 [Service]
+Type=simple
 User=root
 WorkingDirectory=/opt/network_map
+
+# Load environment variables from file at service start
+# systemd automatically exports these into the process environment
+EnvironmentFile=/etc/network-map/network-map.env
+
+# Safety defaults
+Environment=PYTHONUNBUFFERED=1
+
 ExecStart=/usr/bin/env python3.12 -m uvicorn main:app --host 0.0.0.0 --port 8000
 Restart=always
-Environment="PYTHONUNBUFFERED=1"
+RestartSec=5
+
+# Hardening (safe defaults, adjust if needed)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target
