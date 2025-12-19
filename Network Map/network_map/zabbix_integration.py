@@ -171,9 +171,17 @@ def build_network_map() -> Dict[str, Any]:
         label = f"{n} ({ip})" if ip else n
 
         vm = name_to_vm.get(n) or {}
-        role = vm.get("role") or {}
-        role_name = role.get("name", "") or ""
-        env = classify_env(role_name)
+        tags = vm.get("tags") or []
+        tag_names = []
+        for t in tags:
+            if isinstance(t, dict):
+                tag_names.append(t.get("name") or t.get("slug") or "")
+            elif isinstance(t, str):
+                tag_names.append(t)
+        # remove empties
+        tag_names = [x for x in tag_names if x]
+
+        env = classify_env(tag_names)
 
         color = (
             ENV_COLOR_MAP["external"]
