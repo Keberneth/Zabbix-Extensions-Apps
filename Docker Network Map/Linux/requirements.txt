@@ -1,7 +1,0 @@
-fastapi
-uvicorn[standard]
-requests
-openpyxl
-networkx
-numpy
-scipy
