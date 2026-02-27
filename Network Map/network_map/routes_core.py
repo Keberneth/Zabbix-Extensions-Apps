@@ -72,3 +72,4 @@ def download_reports_zip():
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=network_reports.zip"},
     )
+

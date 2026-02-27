@@ -24,6 +24,14 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 DAYS = 30
 HISTORY_CHUNK = 24 * 3600  # 1 day
 
+# Cache refresh behaviour
+#
+# History is cached per-day. If we cache a "day" while it is still in progress,
+# the cached file will only contain partial data. To make sure daily reports
+# always reflect the latest rolling 30-day window, we refresh the most recent
+# N days on every report run.
+CACHE_REFRESH_DAYS = 2
+
 def current_time_window():
     """
     Returns (time_from, time_till) for the current 30-day window.
