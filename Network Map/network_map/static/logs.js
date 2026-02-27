@@ -100,3 +100,4 @@
     logOutput.textContent = filtered.join("\n");
   }
 })();
+

@@ -108,3 +108,4 @@
   NM.updateSummaryDisplay = updateSummaryDisplay;
   NM.showSummary = showSummary;
 })(window);
+

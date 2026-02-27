@@ -51,3 +51,4 @@
 
   NM.handleDownloadReports = handleDownloadReports;
 })(window);
+

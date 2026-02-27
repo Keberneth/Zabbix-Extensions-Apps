@@ -56,3 +56,4 @@ def generate_all_reports() -> None:
     build_drawio_per_host(public_rows, suffix="_public_ip")
 
     print("[REPORT] Report generation complete.")
+

@@ -40,13 +40,8 @@
         html.push(`<li>CPU: ${vcpus} vCPU</li>`);
         html.push(`<li>RAM: ${ramGb}</li>`);
         html.push(`<li>Disk: ${diskGb}</li>`);
-        html.push(`<li>Patch-fönster: ${cf.patch_window || "–"}</li>`);
         html.push(`<li>OS: ${cf.operating_system || "–"}</li>`);
-        html.push(`<li>EOL: ${cf.operating_system_EOL || "–"}</li>`);
-
-        const roleDisplay =
-          (vm.role && (vm.role.display || vm.role.name)) || "–";
-        html.push(`<li>Role: <strong>${roleDisplay}</strong></li>`);
+        html.push(`<li>EOL: ${cf.operating_system_eol || "–"}</li>`);
 
         if (Array.isArray(cf.ha_with_server) && cf.ha_with_server.length) {
           const links = cf.ha_with_server.map((h) => {
@@ -92,3 +87,4 @@
 
   NM.showNetboxInfo = showNetboxInfo;
 })(window);
+

@@ -1,6 +1,5 @@
 import os
 import json
-from collections import defaultdict
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from log import get_logger
@@ -16,6 +15,7 @@ from report_config import (
     NETBOX_HEADERS,
     INTERNAL_NETWORKS,
     HISTORY_CHUNK,
+    CACHE_REFRESH_DAYS,
     current_time_window,
 )
 
@@ -131,6 +131,13 @@ def cleanup_history_cache() -> None:
 def get_connection_history(itemid: str) -> List[Dict[str, Any]]:
     """
     Fetch history for given itemid for the last 30 days using local cache.
+
+    Cache files are stored per-day (HISTORY_CHUNK). A cache file written before
+    the day chunk has fully completed will only contain partial data.
+    To ensure the generated reports always reflect the latest rolling 30 days,
+    we refresh:
+      * the most recent CACHE_REFRESH_DAYS days on every run
+      * any cached chunk where the cache file mtime is before the chunk_end
     """
     all_entries: List[Dict[str, Any]] = []
 
@@ -138,28 +145,53 @@ def get_connection_history(itemid: str) -> List[Dict[str, Any]]:
     first_chunk_start = (time_from // HISTORY_CHUNK) * HISTORY_CHUNK
     last_chunk_start = (time_till // HISTORY_CHUNK) * HISTORY_CHUNK
 
+    refresh_cutoff = time_till - (CACHE_REFRESH_DAYS * HISTORY_CHUNK)
+
     for chunk_start in range(first_chunk_start, last_chunk_start + 1, HISTORY_CHUNK):
+        chunk_end = chunk_start + HISTORY_CHUNK
         cache_file = _history_cache_file(itemid, chunk_start)
-        if os.path.exists(cache_file):
+
+        # Decide whether we can trust the cache for this chunk.
+        must_refresh = False
+
+        # Always refresh current/ongoing chunk.
+        if chunk_end > time_till:
+            must_refresh = True
+
+        # Refresh the most recent N days each run.
+        if chunk_start >= refresh_cutoff:
+            must_refresh = True
+
+        # If a cache file exists but was written before the chunk ended, it is
+        # likely partial (created while the day was still in progress).
+        if not must_refresh and os.path.exists(cache_file):
+            try:
+                mtime = int(os.path.getmtime(cache_file))
+                if mtime < chunk_end:
+                    must_refresh = True
+            except OSError:
+                must_refresh = True
+
+        # Use cache when allowed.
+        if not must_refresh and os.path.exists(cache_file):
             try:
                 with open(cache_file, "r", encoding="utf-8") as f:
                     chunk = json.load(f)
-                all_entries.extend(chunk)
-                continue
+                if isinstance(chunk, list):
+                    all_entries.extend(chunk)
+                    continue
             except Exception as e:
                 logger.warning("Report cache read failed for %s: %s", cache_file, e)
-                logger.exception(
-                    "history.get failed for item %s %s-%s: %s", itemid, chunk_start, chunk_end, e
-                    )
+                must_refresh = True
 
-
-        chunk_end = chunk_start + HISTORY_CHUNK
+        # Fetch fresh chunk from Zabbix (and update cache).
+        req_end = min(chunk_end, time_till)
         params = {
             "output": "extend",
             "history": 4,
-            "itemids": itemid,
+            "itemids": [itemid],
             "time_from": chunk_start,
-            "time_till": chunk_end,
+            "time_till": req_end,
             "sortfield": "clock",
             "sortorder": "ASC",
             "limit": 100000,
@@ -167,18 +199,23 @@ def get_connection_history(itemid: str) -> List[Dict[str, Any]]:
         try:
             chunk = zabbix_api("history.get", params)
         except Exception as e:
-            print(
-                f"[REPORT WARN] history.get failed for item {itemid} {chunk_start}-{chunk_end}: {e}"
+            logger.warning(
+                "[REPORT] history.get failed for item %s %s-%s: %s",
+                itemid,
+                chunk_start,
+                req_end,
+                e,
             )
             continue
 
-        all_entries.extend(chunk)
+        if isinstance(chunk, list):
+            all_entries.extend(chunk)
 
         try:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(chunk, f)
         except Exception as e:
-            print(f"[REPORT WARN] Failed to write cache {cache_file}: {e}")
+            logger.warning("[REPORT] Failed to write cache %s: %s", cache_file, e)
 
     return all_entries
 

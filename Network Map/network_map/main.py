@@ -7,7 +7,6 @@ from fastapi.staticfiles import StaticFiles
 from config import REPORT_DIR
 from routes_core import router as core_router
 from routes_netbox import router as netbox_router
-from routes_zabbix import router as zabbix_router
 from workers import start_workers
 from log import setup_logging, get_logger  # NEW
 
@@ -34,7 +33,6 @@ app.mount("/reports", StaticFiles(directory=REPORT_DIR), name="reports")
 # Routers
 app.include_router(core_router)
 app.include_router(netbox_router)
-app.include_router(zabbix_router)
 
 
 @app.on_event("startup")

@@ -171,18 +171,28 @@ def build_network_map() -> Dict[str, Any]:
         label = f"{n} ({ip})" if ip else n
 
         vm = name_to_vm.get(n) or {}
+
         tags = vm.get("tags") or []
-        tag_names = []
-        for t in tags:
-            if isinstance(t, dict):
-                tag_names.append(t.get("name") or t.get("slug") or "")
-            elif isinstance(t, str):
-                tag_names.append(t)
-        # remove empties
-        tag_names = [x for x in tag_names if x]
-
-        env = classify_env(tag_names)
-
+        candidates = set()
+        
+        if isinstance(tags, list):
+            for t in tags:
+                if isinstance(t, dict):
+                    tag_val = (t.get("slug") or t.get("name") or t.get("display") or "")
+                else:
+                    tag_val = str(t)
+        
+                env_guess = classify_env(tag_val)
+                if env_guess != "unknown":
+                    candidates.add(env_guess)
+        
+        # Prefer prod over qa/test/dev if multiple env tags exist
+        env = "unknown"
+        for pref in ("prod", "qa", "test", "dev"):
+            if pref in candidates:
+                env = pref
+                break
+        
         color = (
             ENV_COLOR_MAP["external"]
             if is_public_ip(ip)
@@ -218,3 +228,4 @@ def build_network_map() -> Dict[str, Any]:
         )
 
     return {"nodes": node_data, "edges": edge_data}
+

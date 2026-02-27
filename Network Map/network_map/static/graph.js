@@ -184,3 +184,4 @@ cytoscape.use(cytoscapeCoseBilkent);
   NM.buildGlobalSubgraph = buildGlobalSubgraph;
   NM.drawGraph = drawGraph;
 })(window);
+

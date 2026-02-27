@@ -1,6 +1,6 @@
 import threading
 import time
-from typing import Dict, List, Set, Any
+from typing import Dict, List, Any
 
 # Network map cache
 _cached_map: Dict[str, Any] = {"nodes": [], "edges": []}
@@ -11,13 +11,9 @@ _netbox_vms: Dict[str, Any] = {}
 _netbox_services: List[Dict[str, Any]] = []
 _name_to_vm: Dict[str, Any] = {}
 
-# Zabbix problems
-_active_problems: Set[str] = set()
-
 # Locks
 _cached_map_lock = threading.Lock()
 _netbox_lock = threading.Lock()
-_active_problems_lock = threading.Lock()
 
 
 # --- Network map ---
@@ -46,12 +42,14 @@ def set_netbox_data(vms: Dict[str, Any], services: List[Dict[str, Any]]) -> None
     with _netbox_lock:
         _netbox_vms = dict(vms)
         _netbox_services = list(services)
-        _name_to_vm = {
-            vm["name"]: vm
-            for vm in _netbox_vms.values()
-            if isinstance(vm, dict) and "name" in vm
-        }
-
+        _name_to_vm = {}
+        for vm in _netbox_vms.values():
+            if not isinstance(vm, dict):
+                continue
+            if vm.get("name"):
+                _name_to_vm[vm["name"]] = vm
+            if vm.get("display"):
+                _name_to_vm[vm["display"]] = vm
 
 def get_netbox_vms() -> Dict[str, Any]:
     with _netbox_lock:
@@ -66,24 +64,3 @@ def get_netbox_services() -> List[Dict[str, Any]]:
 def get_name_to_vm() -> Dict[str, Any]:
     with _netbox_lock:
         return _name_to_vm
-
-
-# --- Active problems (Zabbix webhook) ---
-
-def add_problem(server: str) -> None:
-    if not server:
-        return
-    with _active_problems_lock:
-        _active_problems.add(str(server))
-
-
-def remove_problem(server: str) -> None:
-    if not server:
-        return
-    with _active_problems_lock:
-        _active_problems.discard(str(server))
-
-
-def get_active_problems() -> List[str]:
-    with _active_problems_lock:
-        return list(_active_problems)
