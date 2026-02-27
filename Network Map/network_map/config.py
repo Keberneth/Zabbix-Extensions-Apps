@@ -4,10 +4,10 @@ import urllib3
 
 # --- Zabbix / NetBox configuration (kept hardcoded) ---
 
-ZABBIX_URL             = "https://zabbix.futur.kt4-iver.se/api_jsonrpc.php"
-ZABBIX_TOKEN           = "749d07f2f9d1fea18167d04f54a78030e210fc4b88903f03686c64b8c16e28b3"
-NETBOX_URL             = "https://netbox.futur.kt4-iver.se"
-NETBOX_TOKEN           = "F01XsGUoby45KJKM4ckjPC1qL8WLOWkMbXKYgf2p"
+ZABBIX_URL             = "https://zabbix.domain.se/api_jsonrpc.php"
+ZABBIX_TOKEN           = "API KEY HERE"
+NETBOX_URL             = "https://netbox.domain.se"
+NETBOX_TOKEN           = "API KEY HERE"
 ZABBIX_REFRESH_SECONDS = 30 * 60
 REPORT_DIR             = "/opt/network_map/reports"
 
