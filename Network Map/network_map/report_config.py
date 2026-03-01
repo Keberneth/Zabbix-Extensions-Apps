@@ -1,12 +1,20 @@
 import os
 import time
 import ipaddress
+import warnings
+import urllib3
 
-from config import REPORT_DIR
-from settings_store import get_effective_settings, EffectiveSettings
+from config import NETBOX_TOKEN, REPORT_DIR
+
+# Keep certificate behaviour as before
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+SubjectAltNameWarning = getattr(urllib3.exceptions, "SubjectAltNameWarning", None)
+if SubjectAltNameWarning is not None:
+    warnings.simplefilter("ignore", SubjectAltNameWarning)
 
 # Output and cache
-OUTPUT_DIR = str(REPORT_DIR)
+OUTPUT_DIR = REPORT_DIR
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 CACHE_DIR = os.path.join(OUTPUT_DIR, "cache")
@@ -17,11 +25,18 @@ DAYS = 30
 HISTORY_CHUNK = 24 * 3600  # 1 day
 
 # Cache refresh behaviour
+#
+# History is cached per-day. If we cache a "day" while it is still in progress,
+# the cached file will only contain partial data. To make sure daily reports
+# always reflect the latest rolling 30-day window, we refresh the most recent
+# N days on every report run.
 CACHE_REFRESH_DAYS = 2
 
-
 def current_time_window():
-    """Return (time_from, time_till) for the current rolling 30-day window."""
+    """
+    Returns (time_from, time_till) for the current 30-day window.
+    Computed at call time so a long-running process always has a sliding window.
+    """
     now = int(time.time())
     return now - DAYS * 24 * 3600, now
 
@@ -29,23 +44,12 @@ def current_time_window():
 # Hosts to exclude in DrawIO
 EXCLUDED_HOSTS = {"Zabbix server"}
 
-
-def get_netbox_headers(settings: EffectiveSettings | None = None):
-    """Return NetBox headers for report generation.
-
-    Returns None if NetBox is disabled or not configured.
-    """
-    settings = settings or get_effective_settings()
-    if not settings.enable_netbox:
-        return None
-    if not settings.netbox_token:
-        return None
-    return {
-        "Authorization": f"Token {settings.netbox_token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-
+# NetBox
+NETBOX_HEADERS = {
+    "Authorization": f"Token {NETBOX_TOKEN}",
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+}
 
 # Internal IP ranges
 INTERNAL_NETWORKS = [

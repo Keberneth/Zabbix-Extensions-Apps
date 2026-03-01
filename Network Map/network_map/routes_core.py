@@ -21,15 +21,6 @@ def serve_index():
     return FileResponse(index_path)
 
 
-@router.get("/admin")
-def serve_admin():
-    """Serve the admin UI when running without nginx."""
-    admin_path = BASE_DIR / "static" / "admin" / "index.html"
-    if not admin_path.exists():
-        raise HTTPException(status_code=404, detail="Admin UI not found")
-    return FileResponse(admin_path)
-
-
 @router.get("/api/status")
 def api_status():
     return {"last_updated": get_last_updated()}
@@ -72,10 +63,13 @@ def download_reports_zip():
                     zf.write(file, arcname=file.name)
         mem_zip.seek(0)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating zip file: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error creating zip file: {str(e)}"
+        )
 
     return StreamingResponse(
         mem_zip,
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=network_reports.zip"},
     )
+

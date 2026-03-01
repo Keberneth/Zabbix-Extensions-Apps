@@ -2,40 +2,36 @@ import os
 import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+from log import get_logger
+
+logger = get_logger(__name__)
 
 import requests
 import ipaddress
 
-from log import get_logger
-from settings_store import get_effective_settings, EffectiveSettings
+from config import ZABBIX_URL, ZABBIX_TOKEN, NETBOX_URL
 from report_config import (
     CACHE_DIR,
+    NETBOX_HEADERS,
     INTERNAL_NETWORKS,
     HISTORY_CHUNK,
     CACHE_REFRESH_DAYS,
     current_time_window,
-    get_netbox_headers,
 )
-
-logger = get_logger(__name__)
 
 _NETBOX_IP_CACHE: Dict[str, Any] = {}
 
 
-def zabbix_api(method: str, params: Optional[Dict[str, Any]] = None, *, settings: Optional[EffectiveSettings] = None) -> Any:
-    settings = settings or get_effective_settings()
-    if not settings.zabbix_url or not settings.zabbix_token:
-        raise RuntimeError("Zabbix not configured (url/token missing)")
-
+def zabbix_api(method: str, params: Optional[Dict[str, Any]] = None) -> Any:
     headers = {"Content-Type": "application/json-rpc"}
     payload = {
         "jsonrpc": "2.0",
         "method": method,
         "params": params or {},
-        "auth": settings.zabbix_token,
+        "auth": ZABBIX_TOKEN,
         "id": 1,
     }
-    resp = requests.post(settings.zabbix_url, headers=headers, json=payload, verify=False, timeout=90)
+    resp = requests.post(ZABBIX_URL, headers=headers, json=payload, verify=False)
     resp.raise_for_status()
     data = resp.json()
     if "error" in data:
@@ -43,60 +39,40 @@ def zabbix_api(method: str, params: Optional[Dict[str, Any]] = None, *, settings
     return data["result"]
 
 
-def get_netbox_name_for_ip(ip: str, *, settings: Optional[EffectiveSettings] = None):
-    """Resolve an IP to a name using NetBox IPAM.
-
-    Returns None when NetBox is disabled or not configured.
-    """
+def get_netbox_name_for_ip(ip: str):
     if not ip:
         return None
-
     if ip in _NETBOX_IP_CACHE:
         return _NETBOX_IP_CACHE[ip]
 
-    settings = settings or get_effective_settings()
-    headers = get_netbox_headers(settings)
-    if not headers:
-        _NETBOX_IP_CACHE[ip] = None
-        return None
-
-    if not settings.netbox_url:
-        _NETBOX_IP_CACHE[ip] = None
-        return None
-
-    url = f"{settings.netbox_url.rstrip('/')}/api/ipam/ip-addresses/?address={ip}/32"
-    resp = requests.get(url, headers=headers, verify=False, timeout=60)
+    url = f"{NETBOX_URL}/api/ipam/ip-addresses/?address={ip}/32"
+    resp = requests.get(url, headers=NETBOX_HEADERS, verify=False)
     resp.raise_for_status()
     results = resp.json().get("results", [])
     if not results:
         _NETBOX_IP_CACHE[ip] = None
         return None
-
     obj = results[0]
     vm = obj.get("assigned_object", {}).get("virtual_machine", {}).get("name")
     if vm:
         _NETBOX_IP_CACHE[ip] = vm
         return vm
-
     name = obj.get("dns_name")
     _NETBOX_IP_CACHE[ip] = name
     return name
 
 
-def get_all_hosts_ip_map(*, settings: Optional[EffectiveSettings] = None) -> Dict[str, str]:
-    settings = settings or get_effective_settings()
+def get_all_hosts_ip_map() -> Dict[str, str]:
     params = {
         "output": ["hostid", "host"],
         "selectInterfaces": ["ip"],
         "filter": {"status": 0},
     }
-    hosts = zabbix_api("host.get", params, settings=settings)
+    hosts = zabbix_api("host.get", params)
     ip_to_host: Dict[str, str] = {}
     for h in hosts:
-        name = h.get("host")
-        if not name:
-            continue
-        for iface in h.get("interfaces", []) or []:
+        name = h["host"]
+        for iface in h.get("interfaces", []):
             ip = iface.get("ip")
             if ip:
                 ip_to_host[ip] = name
@@ -104,15 +80,13 @@ def get_all_hosts_ip_map(*, settings: Optional[EffectiveSettings] = None) -> Dic
     # resolve IPs where host == IP using NetBox
     for ip, name in list(ip_to_host.items()):
         if name == ip:
-            nb = get_netbox_name_for_ip(ip, settings=settings)
+            nb = get_netbox_name_for_ip(ip)
             if nb:
                 ip_to_host[ip] = nb
-
     return ip_to_host
 
 
-def get_network_connection_items(*, settings: Optional[EffectiveSettings] = None) -> List[Dict[str, Any]]:
-    settings = settings or get_effective_settings()
+def get_network_connection_items() -> List[Dict[str, Any]]:
     params = {
         "output": ["itemid"],
         "filter": {
@@ -123,7 +97,7 @@ def get_network_connection_items(*, settings: Optional[EffectiveSettings] = None
         },
         "selectHosts": ["host"],
     }
-    return zabbix_api("item.get", params, settings=settings)
+    return zabbix_api("item.get", params)
 
 
 def _history_cache_file(itemid: str, chunk_start: int) -> str:
@@ -131,7 +105,9 @@ def _history_cache_file(itemid: str, chunk_start: int) -> str:
 
 
 def cleanup_history_cache() -> None:
-    """Remove cached chunks that are completely older than the current 30-day window."""
+    """
+    Remove cached chunks that are completely older than the current 30-day window.
+    """
     time_from, _ = current_time_window()
     min_keep_start = (time_from // HISTORY_CHUNK) * HISTORY_CHUNK
     for fname in os.listdir(CACHE_DIR):
@@ -152,10 +128,17 @@ def cleanup_history_cache() -> None:
                 pass
 
 
-def get_connection_history(itemid: str, *, settings: Optional[EffectiveSettings] = None) -> List[Dict[str, Any]]:
-    """Fetch history for given itemid for the last 30 days using local cache."""
-    settings = settings or get_effective_settings()
+def get_connection_history(itemid: str) -> List[Dict[str, Any]]:
+    """
+    Fetch history for given itemid for the last 30 days using local cache.
 
+    Cache files are stored per-day (HISTORY_CHUNK). A cache file written before
+    the day chunk has fully completed will only contain partial data.
+    To ensure the generated reports always reflect the latest rolling 30 days,
+    we refresh:
+      * the most recent CACHE_REFRESH_DAYS days on every run
+      * any cached chunk where the cache file mtime is before the chunk_end
+    """
     all_entries: List[Dict[str, Any]] = []
 
     time_from, time_till = current_time_window()
@@ -214,7 +197,7 @@ def get_connection_history(itemid: str, *, settings: Optional[EffectiveSettings]
             "limit": 100000,
         }
         try:
-            chunk = zabbix_api("history.get", params, settings=settings)
+            chunk = zabbix_api("history.get", params)
         except Exception as e:
             logger.warning(
                 "[REPORT] history.get failed for item %s %s-%s: %s",
@@ -237,16 +220,13 @@ def get_connection_history(itemid: str, *, settings: Optional[EffectiveSettings]
     return all_entries
 
 
-def parse_history_connections(items, ip_to_host, *, settings: Optional[EffectiveSettings] = None):
-    settings = settings or get_effective_settings()
+def parse_history_connections(items, ip_to_host):
     time_from, time_till = current_time_window()
     agg: Dict[Any, Dict[str, Any]] = {}
     for itm in items:
         host = itm.get("hosts", [{}])[0].get("host", "")
         itemid = itm.get("itemid")
-        if not itemid:
-            continue
-        history = get_connection_history(itemid, settings=settings)
+        history = get_connection_history(itemid)
         for entry in history:
             timestamp = int(entry.get("clock", 0))
             if timestamp < time_from or timestamp > time_till:
@@ -271,7 +251,9 @@ def parse_history_connections(items, ip_to_host, *, settings: Optional[Effective
                         continue
                     rip = c.get("remoteip", "")
                     local_ip = c.get("localip", "")
-                    port = c.get("localport" if ctype == "incoming" else "remoteport", "")
+                    port = c.get(
+                        "localport" if ctype == "incoming" else "remoteport", ""
+                    )
                     remote_host = ip_to_host.get(rip, rip)
 
                     key = (ctype, host, local_ip, remote_host, rip, port)
@@ -292,7 +274,8 @@ def parse_history_connections(items, ip_to_host, *, settings: Optional[Effective
                 "remote_ip": remote_ip,
                 "port": port,
                 "count": v["count"],
-                "timestamp": datetime.utcfromtimestamp(v["latest_ts"]).isoformat() + "Z",
+                "timestamp": datetime.utcfromtimestamp(v["latest_ts"]).isoformat()
+                + "Z",
             }
         )
     return rows
@@ -306,7 +289,9 @@ def filter_internal(rows):
             rip = ipaddress.ip_address(r["remote_ip"])
         except ValueError:
             continue
-        if any(lip in net for net in INTERNAL_NETWORKS) and any(rip in net for net in INTERNAL_NETWORKS):
+        if any(lip in net for net in INTERNAL_NETWORKS) and any(
+            rip in net for net in INTERNAL_NETWORKS
+        ):
             filtered.append(r)
     return filtered
 

@@ -1,44 +1,15 @@
-"""Application-wide constants and filesystem paths.
-
-Important: URLs, API keys, and feature flags are NOT stored here anymore.
-They are stored in /etc/network-map/settings.json and managed via /admin.
-
-This module must be safe to import even when the application is not configured.
-"""
-
-from __future__ import annotations
-
-import os
 import ipaddress
 import warnings
-from pathlib import Path
-
 import urllib3
 
-# --- Installation / filesystem layout ---
+# --- Zabbix / NetBox configuration (kept hardcoded) ---
 
-# Where the application is installed (used for logs/data/reports).
-# Default matches the provided systemd + nginx examples.
-INSTALL_DIR = Path(os.environ.get("NETWORK_MAP_INSTALL_DIR", "/opt/network_map"))
-
-STATIC_DIR = INSTALL_DIR / "static"  # served by nginx
-REPORT_DIR = Path(os.environ.get("NETWORK_MAP_REPORT_DIR", str(INSTALL_DIR / "reports")))
-DATA_DIR = Path(os.environ.get("NETWORK_MAP_DATA_DIR", str(INSTALL_DIR / "data")))
-LOG_DIR = Path(os.environ.get("NETWORK_MAP_LOG_DIR", str(INSTALL_DIR / "logs")))
-
-# Where settings/secrets live
-SETTINGS_DIR = Path(os.environ.get("NETWORK_MAP_SETTINGS_DIR", "/etc/network-map"))
-SETTINGS_FILE = Path(os.environ.get("NETWORK_MAP_SETTINGS_FILE", str(SETTINGS_DIR / "settings.json")))
-SECRET_KEY_FILE = Path(os.environ.get("NETWORK_MAP_SECRET_KEY_FILE", str(SETTINGS_DIR / "secret.key")))
-ADMIN_PASSWORD_FILE = Path(
-    os.environ.get("NETWORK_MAP_ADMIN_PASSWORD_FILE", str(SETTINGS_DIR / "admin_password.txt"))
-)
-
-# --- Default refresh intervals ---
-
-DEFAULT_ZABBIX_SYNC_SECONDS = int(os.environ.get("NETWORK_MAP_ZABBIX_SYNC_SECONDS", "1800"))  # 30 min
-DEFAULT_NETBOX_SYNC_SECONDS = int(os.environ.get("NETWORK_MAP_NETBOX_SYNC_SECONDS", "86400"))  # 24h
-DEFAULT_REPORT_SYNC_SECONDS = int(os.environ.get("NETWORK_MAP_REPORT_SYNC_SECONDS", "86400"))  # 24h
+ZABBIX_URL             = "https://zabbix.domain.se/api_jsonrpc.php"
+ZABBIX_TOKEN           = "API KEY HERE"
+NETBOX_URL             = "https://netbox.domain.se"
+NETBOX_TOKEN           = "API KEY HERE"
+ZABBIX_REFRESH_SECONDS = 30 * 60
+REPORT_DIR             = "/opt/network_map/reports"
 
 # --- IP ranges / colors ---
 
@@ -59,6 +30,7 @@ ENV_COLOR_MAP = {
 }
 
 # Keep ignoring certificate warnings as before
+# Keep ignoring certificate warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # SubjectAltNameWarning exists only in older urllib3; make it optional
