@@ -28,7 +28,7 @@ from log import get_logger
 
 logger = get_logger(__name__)
 
-_SETTINGS_LOCK = threading.Lock()
+_SETTINGS_LOCK = threading.RLock()
 _SETTINGS_CACHE: Optional[Dict[str, Any]] = None
 
 
