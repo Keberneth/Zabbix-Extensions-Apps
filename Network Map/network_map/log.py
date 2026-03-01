@@ -2,21 +2,22 @@ import logging
 import logging.handlers
 from pathlib import Path
 
+from config import LOG_DIR
+
 # Default log directory and file
-LOG_DIR = Path("/opt/network_map/logs")
-LOG_FILE = LOG_DIR / "network_map.log"
+LOG_FILE = Path(LOG_DIR) / "network_map.log"
 
 
 def setup_logging(level: int = logging.INFO) -> None:
-    """
-    Initialize application-wide logging.
+    """Initialize application-wide logging.
+
     Safe to call multiple times (second call is a no-op).
     """
     if logging.getLogger().handlers:
         # Already configured
         return
 
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 
     formatter = logging.Formatter(
         fmt="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
@@ -45,7 +46,5 @@ def setup_logging(level: int = logging.INFO) -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Return a module-specific logger.
-    """
+    """Return a module-specific logger."""
     return logging.getLogger(name)

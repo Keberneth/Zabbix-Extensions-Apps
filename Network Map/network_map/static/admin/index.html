@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Network Map – Admin</title>
+
+  <link href="/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f6f7f9; }
+    .container { max-width: 1100px; }
+    .card { margin-bottom: 16px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .small-muted { font-size: 12px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container py-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h3 class="mb-0">Network Map – Admin</h3>
+        <div class="small-muted">Settings are stored on the server. API tokens are encrypted at rest.</div>
+      </div>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="/">Back to map</a>
+        <button id="btnLogout" class="btn btn-outline-danger btn-sm" style="display:none;">Logout</button>
+      </div>
+    </div>
+
+    <!-- Login -->
+    <div id="loginCard" class="card">
+      <div class="card-body">
+        <h5 class="card-title">Login</h5>
+        <div class="row g-2 align-items-end">
+          <div class="col-sm-6">
+            <label class="form-label">Admin password</label>
+            <input id="loginPassword" type="password" class="form-control" placeholder="Password">
+          </div>
+          <div class="col-sm-3">
+            <button id="btnLogin" class="btn btn-primary w-100">Login</button>
+          </div>
+          <div class="col-sm-12">
+            <div id="loginMsg" class="small-muted"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div id="settingsCard" class="card" style="display:none;">
+      <div class="card-body">
+        <h5 class="card-title">Integrations</h5>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="border rounded p-3 bg-white">
+              <div class="d-flex align-items-center justify-content-between">
+                <h6 class="mb-2">Zabbix</h6>
+                <span id="zbxTokenStatus" class="badge text-bg-secondary">token: unknown</span>
+              </div>
+              <label class="form-label">Zabbix API URL</label>
+              <input id="zabbixUrl" class="form-control" placeholder="https://zabbix.example/api_jsonrpc.php">
+
+              <label class="form-label mt-2">Zabbix API Token</label>
+              <input id="zabbixToken" type="password" class="form-control" placeholder="Leave blank to keep current">
+              <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="clearZabbixToken">
+                <label class="form-check-label" for="clearZabbixToken">Clear stored Zabbix token</label>
+              </div>
+
+              <label class="form-label mt-2">Zabbix sync interval (seconds)</label>
+              <input id="zabbixSync" type="number" min="1" class="form-control" placeholder="1800">
+
+              <div class="d-flex gap-2 mt-3">
+                <button id="btnSyncZabbix" class="btn btn-outline-primary btn-sm">Sync Zabbix now</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="border rounded p-3 bg-white">
+              <div class="d-flex align-items-center justify-content-between">
+                <h6 class="mb-2">NetBox</h6>
+                <span id="nbxTokenStatus" class="badge text-bg-secondary">token: unknown</span>
+              </div>
+
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="enableNetbox">
+                <label class="form-check-label" for="enableNetbox">Enable NetBox integration</label>
+              </div>
+
+              <label class="form-label">NetBox URL</label>
+              <input id="netboxUrl" class="form-control" placeholder="https://netbox.example">
+
+              <label class="form-label mt-2">NetBox API Token</label>
+              <input id="netboxToken" type="password" class="form-control" placeholder="Leave blank to keep current">
+              <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="clearNetboxToken">
+                <label class="form-check-label" for="clearNetboxToken">Clear stored NetBox token</label>
+              </div>
+
+              <label class="form-label mt-2">NetBox sync interval (seconds)</label>
+              <input id="netboxSync" type="number" min="1" class="form-control" placeholder="86400">
+
+              <div class="d-flex gap-2 mt-3">
+                <button id="btnSyncNetbox" class="btn btn-outline-primary btn-sm">Sync NetBox now</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="border rounded p-3 bg-white">
+              <h6 class="mb-2">Reports</h6>
+              <label class="form-label">Report generation interval (seconds)</label>
+              <input id="reportSync" type="number" min="1" class="form-control" placeholder="86400">
+
+              <div class="d-flex gap-2 mt-3">
+                <button id="btnGenerateReport" class="btn btn-outline-success btn-sm">Generate report now</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="d-flex gap-2">
+              <button id="btnSave" class="btn btn-success">Save settings</button>
+              <button id="btnReload" class="btn btn-outline-secondary">Reload</button>
+            </div>
+            <div id="saveMsg" class="small-muted mt-2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div id="statusCard" class="card" style="display:none;">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between">
+          <h5 class="card-title mb-0">Status</h5>
+          <button id="btnRefreshStatus" class="btn btn-outline-secondary btn-sm">Refresh</button>
+        </div>
+        <div class="row mt-3">
+          <div class="col-md-4">
+            <div class="p-2 border rounded bg-white">
+              <div class="fw-semibold">Zabbix</div>
+              <div id="statusZabbix" class="mono small"></div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="p-2 border rounded bg-white">
+              <div class="fw-semibold">NetBox</div>
+              <div id="statusNetbox" class="mono small"></div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="p-2 border rounded bg-white">
+              <div class="fw-semibold">Report</div>
+              <div id="statusReport" class="mono small"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/admin/admin.js"></script>
+</body>
+</html>
