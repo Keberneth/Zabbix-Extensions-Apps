@@ -12,6 +12,7 @@ from log import get_logger
 
 logger = get_logger(__name__)
 
+
 def zabbix_api(method: str, params: Optional[Dict[str, Any]] = None) -> Any:
     payload = {
         "jsonrpc": "2.0",
@@ -31,6 +32,7 @@ def zabbix_api(method: str, params: Optional[Dict[str, Any]] = None) -> Any:
     if "error" in data:
         raise Exception(data["error"])
     return data["result"]
+
 
 
 def get_ip_maps() -> Tuple[Dict[str, str], Dict[str, str]]:
@@ -69,6 +71,7 @@ def get_ip_maps() -> Tuple[Dict[str, str], Dict[str, str]]:
     return ip2host, host2ip
 
 
+
 def get_network_items() -> List[Dict[str, Any]]:
     return zabbix_api(
         "item.get",
@@ -83,6 +86,7 @@ def get_network_items() -> List[Dict[str, Any]]:
             "selectHosts": ["host"],
         },
     )
+
 
 
 def get_history(itemid: str, time_from: int, time_till: int) -> List[Dict[str, Any]]:
@@ -101,6 +105,29 @@ def get_history(itemid: str, time_from: int, time_till: int) -> List[Dict[str, A
     )
 
 
+
+def _collect_env_from_tags(vm: Dict[str, Any]) -> str:
+    tags = vm.get("tags") or []
+    candidates: Set[str] = set()
+
+    if isinstance(tags, list):
+        for tag in tags:
+            if isinstance(tag, dict):
+                tag_val = tag.get("slug") or tag.get("name") or tag.get("display") or ""
+            else:
+                tag_val = str(tag)
+
+            env_guess = classify_env(tag_val)
+            if env_guess != "unknown":
+                candidates.add(env_guess)
+
+    for pref in ("prod", "qa", "test", "dev"):
+        if pref in candidates:
+            return pref
+    return "unknown"
+
+
+
 def build_network_map() -> Dict[str, Any]:
     """
     Build network map for the last 24 hours (24h window retained).
@@ -110,6 +137,7 @@ def build_network_map() -> Dict[str, Any]:
     tt = now
 
     ip2host, host2ip = get_ip_maps()
+    node_ip_map: Dict[str, str] = dict(host2ip)
     name_to_vm = get_name_to_vm()
 
     edges_set: Set[tuple] = set()
@@ -138,73 +166,75 @@ def build_network_map() -> Dict[str, Any]:
                 for c in conn_list:
                     if not isinstance(c, dict):
                         continue
-                    lip = c.get("localip")
-                    rip = c.get("remoteip")
-                    port = c.get("localport") or c.get("remoteport") or ""
 
-                    if not lip or not rip:
+                    local_ip = c.get("localip")
+                    remote_ip = c.get("remoteip")
+                    local_port = str(c.get("localport") or "")
+                    remote_port = str(c.get("remoteport") or "")
+
+                    if not local_ip or not remote_ip:
                         continue
 
                     if direction == "in":
-                        src = ip2host.get(rip, rip)
-                        dst = ip2host.get(lip, lip)
+                        src = ip2host.get(remote_ip, remote_ip)
+                        dst = ip2host.get(local_ip, local_ip)
+                        src_ip = remote_ip
+                        dst_ip = local_ip
+                        service_port = local_port
                     else:
-                        src = ip2host.get(lip, lip)
-                        dst = ip2host.get(rip, rip)
+                        src = ip2host.get(local_ip, local_ip)
+                        dst = ip2host.get(remote_ip, remote_ip)
+                        src_ip = local_ip
+                        dst_ip = remote_ip
+                        service_port = remote_port
 
                     nodes.add(src)
                     nodes.add(dst)
+                    node_ip_map.setdefault(src, src_ip)
+                    node_ip_map.setdefault(dst, dst_ip)
 
-                    is_pub = is_public_ip(rip)
-                    edges_set.add((src, dst, port, is_pub))
+                    is_public = is_public_ip(remote_ip)
+                    edges_set.add(
+                        (
+                            src,
+                            dst,
+                            service_port,
+                            local_port,
+                            remote_port,
+                            is_public,
+                            src_ip,
+                            dst_ip,
+                        )
+                    )
 
     # Degrees
     degree: Dict[str, int] = {n: 0 for n in nodes}
-    for s, d, _, _ in edges_set:
-        degree[s] = degree.get(s, 0) + 1
-        degree[d] = degree.get(d, 0) + 1
+    for src, dst, *_ in edges_set:
+        degree[src] = degree.get(src, 0) + 1
+        degree[dst] = degree.get(dst, 0) + 1
 
     # Nodes
     node_data = []
-    for n in nodes:
-        ip = host2ip.get(n, "")
-        label = f"{n} ({ip})" if ip else n
+    for node_name in nodes:
+        ip = node_ip_map.get(node_name, "")
+        label = f"{node_name} ({ip})" if ip and ip != node_name else node_name
 
-        vm = name_to_vm.get(n) or {}
+        vm = name_to_vm.get(node_name) or {}
+        env = _collect_env_from_tags(vm)
 
-        tags = vm.get("tags") or []
-        candidates = set()
-        
-        if isinstance(tags, list):
-            for t in tags:
-                if isinstance(t, dict):
-                    tag_val = (t.get("slug") or t.get("name") or t.get("display") or "")
-                else:
-                    tag_val = str(t)
-        
-                env_guess = classify_env(tag_val)
-                if env_guess != "unknown":
-                    candidates.add(env_guess)
-        
-        # Prefer prod over qa/test/dev if multiple env tags exist
-        env = "unknown"
-        for pref in ("prod", "qa", "test", "dev"):
-            if pref in candidates:
-                env = pref
-                break
-        
-        color = (
-            ENV_COLOR_MAP["external"]
-            if is_public_ip(ip)
-            else ENV_COLOR_MAP.get(env, ENV_COLOR_MAP["internal-unknown"])
-        )
+        if is_public_ip(ip):
+            color = ENV_COLOR_MAP["external"]
+        elif env != "unknown":
+            color = ENV_COLOR_MAP.get(env, ENV_COLOR_MAP["internal-unknown"])
+        else:
+            color = ENV_COLOR_MAP["internal-unknown"]
 
         node_data.append(
             {
                 "data": {
-                    "id": n,
+                    "id": node_name,
                     "label": label,
-                    "degree": degree.get(n, 0),
+                    "degree": degree.get(node_name, 0),
                     "ip": ip,
                     "color": color,
                 }
@@ -213,19 +243,21 @@ def build_network_map() -> Dict[str, Any]:
 
     # Edges
     edge_data = []
-    for s, d, p, isp in edges_set:
+    for src, dst, service_port, local_port, remote_port, is_public, src_ip, dst_ip in edges_set:
         edge_data.append(
             {
                 "data": {
-                    "source": s,
-                    "target": d,
-                    "label": f"port {p}" if p else "",
-                    "isPublic": isp,
-                    "srcIp": host2ip.get(s, ""),
-                    "dstIp": host2ip.get(d, ""),
+                    "source": src,
+                    "target": dst,
+                    "label": f"port {service_port}" if service_port else "",
+                    "servicePort": service_port,
+                    "localPort": local_port,
+                    "remotePort": remote_port,
+                    "isPublic": is_public,
+                    "srcIp": src_ip,
+                    "dstIp": dst_ip,
                 }
             }
         )
 
     return {"nodes": node_data, "edges": edge_data}
-

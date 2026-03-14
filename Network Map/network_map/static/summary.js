@@ -9,6 +9,7 @@
       global.NMState ||
       {
         rawData: null,
+        currentGraph: { nodes: [], edges: [] },
         cy: null,
         summaryData: { incoming: [], outgoing: [] },
       });
@@ -25,39 +26,37 @@
     const fp = filters.parseSumTokens(sumFport.value);
 
     const lines = [];
+    let matched = 0;
 
-    if (state.summaryData.incoming.length) {
-      lines.push("Inkommande:");
-      state.summaryData.incoming.forEach((e) => {
-        const pNum = filters.extractPort(e.port);
+    function appendSection(title, entries) {
+      const sectionLines = [];
+      entries.forEach((entry) => {
+        const portNum = filters.extractPort(entry.servicePort ?? entry.port);
         if (
-          filters.matchTokens(e.src, fs) &&
-          filters.matchTokens(e.dst, fd) &&
-          filters.matchPortTokens(pNum, fp)
+          filters.matchTokens(entry.src, fs) &&
+          filters.matchTokens(entry.dst, fd) &&
+          filters.matchPortTokens(portNum, fp)
         ) {
-          lines.push(`${e.src}\t${e.dst}\t${e.port}`);
+          sectionLines.push(`${entry.src}	${entry.dst}	${entry.port}`);
+          matched += 1;
         }
       });
-      lines.push("");
+
+      if (sectionLines.length) {
+        lines.push(title);
+        lines.push(...sectionLines);
+        lines.push("");
+      }
     }
 
-    if (state.summaryData.outgoing.length) {
-      lines.push("Utgående:");
-      state.summaryData.outgoing.forEach((e) => {
-        const pNum = filters.extractPort(e.port);
-        if (
-          filters.matchTokens(e.src, fs) &&
-          filters.matchTokens(e.dst, fd) &&
-          filters.matchPortTokens(pNum, fp)
-        ) {
-          lines.push(`${e.src}\t${e.dst}\t${e.port}`);
-        }
-      });
-      lines.push("");
-    }
+    appendSection("Inkommande:", state.summaryData.incoming || []);
+    appendSection("Utgående:", state.summaryData.outgoing || []);
 
-    if (!lines.length) {
+    if (matched === 0) {
+      lines.length = 0;
       lines.push("Ingen trafik matchar filtren.");
+    } else if (lines.length && lines[lines.length - 1] === "") {
+      lines.pop();
     }
 
     summaryContent.textContent = lines.join("\n");
@@ -66,40 +65,44 @@
   function showSummary(node) {
     const summaryBox = document.getElementById("summary");
     const summaryTitle = document.getElementById("summaryTitle");
-    if (!summaryBox || !summaryTitle || !state.rawData || !state.cy) return;
+    if (!summaryBox || !summaryTitle || !state.currentGraph || !state.cy) return;
 
-    // Grey-out everything except this node and its neighbours
     state.cy.elements().not(node.closedNeighborhood()).addClass("faded");
 
-    const inc = state.rawData.edges.filter(
-      (edge) => edge.data.target === node.id()
-    );
-    const out = state.rawData.edges.filter(
-      (edge) => edge.data.source === node.id()
-    );
+    const drawnEdges = state.currentGraph.edges || [];
+    const incoming = drawnEdges.filter((edge) => edge.data.target === node.id());
+    const outgoing = drawnEdges.filter((edge) => edge.data.source === node.id());
 
     state.summaryData = {
-      incoming: inc.map((e) => ({
-        src: e.data.source,
-        dst: e.data.target,
-        port: e.data.label,
+      incoming: incoming.map((edge) => ({
+        src: edge.data.source,
+        dst: edge.data.target,
+        port: edge.data.label,
+        servicePort: edge.data.servicePort,
       })),
-      outgoing: out.map((e) => ({
-        src: e.data.source,
-        dst: e.data.target,
-        port: e.data.label,
+      outgoing: outgoing.map((edge) => ({
+        src: edge.data.source,
+        dst: edge.data.target,
+        port: edge.data.label,
+        servicePort: edge.data.servicePort,
       })),
     };
 
     summaryTitle.textContent = `Kommunikation för ${node.data("label")}`;
 
-    // Reset filters and collapse
-    document.getElementById("sumFilterSrc").value = "";
-    document.getElementById("sumFilterDst").value = "";
-    document.getElementById("sumFilterPort").value = "";
-    document.getElementById("summaryFilters").style.display = "none";
-    document.getElementById("summaryContent").style.display = "none";
-    document.getElementById("minimizeSummary").textContent = "[+]";
+    const sumFilterSrc = document.getElementById("sumFilterSrc");
+    const sumFilterDst = document.getElementById("sumFilterDst");
+    const sumFilterPort = document.getElementById("sumFilterPort");
+    const summaryFilters = document.getElementById("summaryFilters");
+    const summaryContent = document.getElementById("summaryContent");
+    const minimizeSummary = document.getElementById("minimizeSummary");
+
+    if (sumFilterSrc) sumFilterSrc.value = "";
+    if (sumFilterDst) sumFilterDst.value = "";
+    if (sumFilterPort) sumFilterPort.value = "";
+    if (summaryFilters) summaryFilters.style.display = "none";
+    if (summaryContent) summaryContent.style.display = "none";
+    if (minimizeSummary) minimizeSummary.textContent = "[+]";
 
     summaryBox.hidden = false;
     updateSummaryDisplay();
@@ -108,4 +111,3 @@
   NM.updateSummaryDisplay = updateSummaryDisplay;
   NM.showSummary = showSummary;
 })(window);
-

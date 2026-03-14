@@ -3,58 +3,94 @@
   "use strict";
 
   const NM = (global.NetworkMap = global.NetworkMap || {});
-  const state =
-    (global.NMState =
-      global.NMState ||
-      {
-        rawData: null,
-        cy: null,
-        summaryData: { incoming: [], outgoing: [] },
-      });
+  const DEFAULT_RPC_PORTS = new Set([111, 135, 593]);
+  const DEFAULT_DYNAMIC_PORT_MIN = 49152;
+
+  function normalizePort(port) {
+    if (port === null || port === undefined || port === "") {
+      return null;
+    }
+
+    const value =
+      typeof port === "number"
+        ? port
+        : Number.parseInt(String(port).trim(), 10);
+
+    if (!Number.isInteger(value) || value < 0 || value > 65535) {
+      return null;
+    }
+
+    return value;
+  }
 
   // --- IP helpers ---
 
   function ipToLong(ip) {
-    if (!ip) return 0;
-    const parts = ip.split(".");
-    if (parts.length !== 4) return 0;
-    return (
-      ((parseInt(parts[0], 10) << 24) |
-        (parseInt(parts[1], 10) << 16) |
-        (parseInt(parts[2], 10) << 8) |
-        parseInt(parts[3], 10)) >>> 0
-    );
+    if (typeof ip !== "string") return null;
+
+    const parts = ip.trim().split(".");
+    if (parts.length !== 4) return null;
+
+    let value = 0;
+    for (const part of parts) {
+      if (!/^\d+$/.test(part)) return null;
+      const octet = Number(part);
+      if (!Number.isInteger(octet) || octet < 0 || octet > 255) {
+        return null;
+      }
+      value = (value << 8) | octet;
+    }
+
+    return value >>> 0;
+  }
+
+  function buildCidrMask(prefix) {
+    if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) {
+      return null;
+    }
+
+    if (prefix === 0) return 0;
+    if (prefix === 32) return 0xffffffff >>> 0;
+    return (0xffffffff << (32 - prefix)) >>> 0;
   }
 
   function parseIpFilters(str) {
     if (!str) return [];
+
     return str
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
-      .map((s) => {
-        const range = s.match(/^([\d.]+)\s*-\s*([\d.]+)$/);
+      .map((token) => {
+        const range = token.match(/^([\d.]+)\s*-\s*([\d.]+)$/);
         if (range) {
-          let a = ipToLong(range[1]);
-          let b = ipToLong(range[2]);
-          if (a > b) [a, b] = [b, a];
-          return { type: "range", start: a, end: b };
+          let start = ipToLong(range[1]);
+          let end = ipToLong(range[2]);
+          if (start === null || end === null) return null;
+          if (start > end) [start, end] = [end, start];
+          return { type: "range", start, end };
         }
-        const cidr = s.match(/^([\d.]+)\/(\d+)$/);
+
+        const cidr = token.match(/^([\d.]+)\/(\d{1,2})$/);
         if (cidr) {
-          const mask = (~((1 << (32 - +cidr[2])) - 1)) >>> 0;
-          const base = ipToLong(cidr[1]) & mask;
-          return { type: "cidr", base, mask };
+          const baseIp = ipToLong(cidr[1]);
+          const prefix = Number(cidr[2]);
+          const mask = buildCidrMask(prefix);
+          if (baseIp === null || mask === null) return null;
+          return { type: "cidr", base: baseIp & mask, mask };
         }
-        const v = ipToLong(s);
-        if (!Number.isNaN(v)) return { type: "exact", value: v };
-        return null;
+
+        const value = ipToLong(token);
+        if (value === null) return null;
+        return { type: "exact", value };
       })
       .filter(Boolean);
   }
 
   function matchesIpFilter(ipStr, filters) {
     const num = ipToLong(ipStr);
+    if (num === null) return false;
+
     return filters.some(
       (f) =>
         (f.type === "exact" && num === f.value) ||
@@ -65,7 +101,6 @@
 
   // --- Port helpers for MAIN filter (multi ports/ranges) ---
 
-  // Returns a matcher function or null
   function parsePortFilter(str) {
     if (!str) return null;
 
@@ -77,57 +112,60 @@
     const rules = [];
 
     for (const token of tokens) {
-      // Single port, e.g. "443"
       if (/^\d+$/.test(token)) {
-        const p = parseInt(token, 10);
-        if (Number.isFinite(p)) {
-          rules.push({ type: "single", port: p });
+        const port = normalizePort(token);
+        if (port !== null) {
+          rules.push({ type: "single", port });
         }
         continue;
       }
 
-      // Range, e.g. "1000-2000"
-      const m = token.match(/^(\d+)\s*-\s*(\d+)$/);
-      if (m) {
-        let a = parseInt(m[1], 10);
-        let b = parseInt(m[2], 10);
-        if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
-        if (b < a) [a, b] = [b, a]; // normalize
-        rules.push({ type: "range", min: a, max: b });
-        continue;
+      const match = token.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (match) {
+        let min = normalizePort(match[1]);
+        let max = normalizePort(match[2]);
+        if (min === null || max === null) continue;
+        if (max < min) [min, max] = [max, min];
+        rules.push({ type: "range", min, max });
       }
-
-      // ignore invalid tokens
     }
 
     if (rules.length === 0) return null;
 
     return function matchesPort(port) {
-      if (port == null) return false;
-
-      const p =
-        typeof port === "string" ? parseInt(port, 10) : Number(port);
-      if (!Number.isFinite(p)) return false;
+      const value = normalizePort(port);
+      if (value === null) return false;
 
       return rules.some((rule) => {
         if (rule.type === "single") {
-          return p === rule.port;
+          return value === rule.port;
         }
-        // range
-        return p >= rule.min && p <= rule.max;
+        return value >= rule.min && value <= rule.max;
       });
     };
   }
 
-  function extractPort(label) {
-    if (!label) return NaN;
-    const m = label.match(/(\d+)/);
-    return m ? +m[1] : NaN;
+  function extractPort(value) {
+    const direct = normalizePort(value);
+    if (direct !== null) return direct;
+
+    if (value === null || value === undefined || value === "") {
+      return NaN;
+    }
+
+    const match = String(value).match(/(\d{1,5})/);
+    const parsed = match ? normalizePort(match[1]) : null;
+    return parsed === null ? NaN : parsed;
+  }
+
+  function isDefaultHiddenPort(port) {
+    const value = normalizePort(port);
+    if (value === null) return false;
+    return DEFAULT_RPC_PORTS.has(value) || value >= DEFAULT_DYNAMIC_PORT_MIN;
   }
 
   // --- Endpoint filters (Source/Dest) ---
 
-  // "srv1,srv2,192.168.1.10" -> ["srv1","srv2","192.168.1.10"]
   function parseListFilter(str) {
     if (!str) return [];
     return str
@@ -137,7 +175,6 @@
       .map((s) => s.toLowerCase());
   }
 
-  // Match tokens against hostname + IP
   function matchesEndpointFilter(tokens, name, ip) {
     if (!tokens || tokens.length === 0) return true;
 
@@ -154,26 +191,32 @@
 
   function parseSumTokens(str) {
     if (!str) return [];
+
     return str
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
-      .map((s) => {
-        const exclude = s.startsWith("!");
-        const token = exclude ? s.slice(1) : s;
-        if (token.includes("-")) {
-          const [a, b] = token.split("-").map(Number);
+      .map((raw) => {
+        const exclude = raw.startsWith("!");
+        const token = exclude ? raw.slice(1) : raw;
+        const range = token.match(/^(\d+)\s*-\s*(\d+)$/);
+
+        if (range) {
+          let a = Number(range[1]);
+          let b = Number(range[2]);
           return {
             range: [Math.min(a, b), Math.max(a, b)],
             exclude,
           };
         }
+
         return { value: token, exclude };
       });
   }
 
   function matchPortTokens(portNum, tokens) {
     if (!tokens.length) return true;
+
     const includes = tokens.filter((t) => !t.exclude);
     const excludes = tokens.filter((t) => t.exclude);
 
@@ -197,24 +240,30 @@
     ) {
       return false;
     }
+
     return true;
   }
 
   function matchTokens(text, tokens) {
     if (!tokens.length) return true;
-    const inc = tokens.filter((t) => !t.exclude);
-    const exc = tokens.filter((t) => t.exclude);
-    const lower = text.toLowerCase();
+
+    const includes = tokens.filter((t) => !t.exclude);
+    const excludes = tokens.filter((t) => t.exclude);
+    const lower = (text || "").toLowerCase();
 
     let ok = true;
-    if (inc.length) {
-      ok = inc.some((t) => lower.includes(t.value.toLowerCase()));
+    if (includes.length) {
+      ok = includes.some((t) => lower.includes(String(t.value || "").toLowerCase()));
     }
     if (!ok) return false;
 
-    if (exc.length && exc.some((t) => lower.includes(t.value.toLowerCase()))) {
+    if (
+      excludes.length &&
+      excludes.some((t) => lower.includes(String(t.value || "").toLowerCase()))
+    ) {
       return false;
     }
+
     return true;
   }
 
@@ -226,6 +275,7 @@
     dstTokens,
     portMatcher,
     excludePublic,
+    excludeNoisePorts,
     ipFilters
   ) {
     const srcIp = data.srcIp || data.src_ip || "";
@@ -234,14 +284,15 @@
     if (!matchesEndpointFilter(srcTokens, data.source, srcIp)) return false;
     if (!matchesEndpointFilter(dstTokens, data.target, dstIp)) return false;
 
-    const port = extractPort(data.label);
+    const port = extractPort(data.servicePort ?? data.label);
+    if (excludeNoisePorts && isDefaultHiddenPort(port)) return false;
     if (portMatcher && !portMatcher(port)) return false;
 
     if (excludePublic && data.isPublic) return false;
 
     if (ipFilters && ipFilters.length) {
-      if (data.srcIp && matchesIpFilter(data.srcIp, ipFilters)) return false;
-      if (data.dstIp && matchesIpFilter(data.dstIp, ipFilters)) return false;
+      if (srcIp && matchesIpFilter(srcIp, ipFilters)) return false;
+      if (dstIp && matchesIpFilter(dstIp, ipFilters)) return false;
     }
 
     return true;
@@ -251,8 +302,10 @@
     ipToLong,
     parseIpFilters,
     matchesIpFilter,
+    normalizePort,
     parsePortFilter,
     extractPort,
+    isDefaultHiddenPort,
     parseListFilter,
     parseSumTokens,
     matchPortTokens,
@@ -261,4 +314,3 @@
     edgeMatches,
   };
 })(window);
-

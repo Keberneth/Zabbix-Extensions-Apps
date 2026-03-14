@@ -11,11 +11,12 @@ from state import get_cached_map, get_last_updated
 router = APIRouter()
 
 BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
 
 
 @router.get("/")
 def serve_index():
-    index_path = BASE_DIR / "static" / "index.html"
+    index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=500, detail="Index file not found")
     return FileResponse(index_path)
@@ -72,4 +73,3 @@ def download_reports_zip():
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=network_reports.zip"},
     )
-

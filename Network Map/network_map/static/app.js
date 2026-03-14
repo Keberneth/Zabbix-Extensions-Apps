@@ -8,11 +8,35 @@
       global.NMState ||
       {
         rawData: null,
+        rawNodeMap: null,
+        currentGraph: { nodes: [], edges: [] },
         cy: null,
         summaryData: { incoming: [], outgoing: [] },
       });
 
   const DARK_MODE_KEY = "networkMapDarkMode";
+  const STATUS_POLL_INTERVAL_MS = 30000;
+
+  function ensureStateDefaults() {
+    if (!(state.rawNodeMap instanceof Map)) {
+      state.rawNodeMap = new Map();
+    }
+    if (!state.currentGraph) {
+      state.currentGraph = { nodes: [], edges: [] };
+    }
+    if (!state.summaryData) {
+      state.summaryData = { incoming: [], outgoing: [] };
+    }
+    if (typeof state.lastUpdated !== "number") {
+      state.lastUpdated = 0;
+    }
+    if (typeof state.hasDrawnGraph !== "boolean") {
+      state.hasDrawnGraph = false;
+    }
+    if (!state.pollTimer) {
+      state.pollTimer = null;
+    }
+  }
 
   function loadDarkModePreference() {
     try {
@@ -50,76 +74,275 @@
     spinner.style.display = show ? "block" : "none";
   }
 
-  function populateHostSelect(nodes) {
-    const sel = document.getElementById("hostSelect");
-    if (!sel) return;
-
-    sel.innerHTML = "";
-
-    const optAll = document.createElement("option");
-    optAll.value = "";
-    optAll.textContent = "Alla värdar";
-    sel.appendChild(optAll);
-
-    (nodes || [])
-      .map((n) => n.data.id)
-      .sort()
-      .forEach((id) => {
-        const opt = document.createElement("option");
-        opt.value = id;
-        opt.textContent = id;
-        sel.appendChild(opt);
-      });
+  function buildNodeMap(nodes) {
+    const map = new Map();
+    (nodes || []).forEach((node) => {
+      const id = node && node.data && node.data.id;
+      if (id) {
+        map.set(id, node);
+      }
+    });
+    return map;
   }
 
-  function fetchNetworkMap() {
-    showSpinner(true);
-    fetch("/api/network_map")
-      .then((r) => {
-        if (!r.ok) {
-          throw new Error("Failed to fetch /api/network_map");
+  function sanitizeNetworkMapData(data) {
+    const normalized = data || {};
+    if (!Array.isArray(normalized.nodes)) normalized.nodes = [];
+    if (!Array.isArray(normalized.edges)) normalized.edges = [];
+
+    normalized.edges = normalized.edges.filter(
+      (edge) => edge && edge.data && edge.data.source && edge.data.target
+    );
+
+    normalized.edges.forEach((edge, idx) => {
+      if (!edge.data.id) edge.data.id = `e${idx}`;
+    });
+
+    normalized.nodes.forEach((node) => {
+      if (!node.data) node.data = {};
+      if (!node.data.id && node.data.label) {
+        node.data.id = node.data.label;
+      }
+      if (!node.data.label && node.data.id) {
+        node.data.label = node.data.id;
+      }
+    });
+
+    return normalized;
+  }
+
+  function populateHostSelect(nodes) {
+    const select = document.getElementById("hostSelect");
+    if (!select) return;
+
+    const previousValue = select.value;
+    select.innerHTML = "";
+
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "Alla värdar";
+    select.appendChild(allOption);
+
+    (nodes || [])
+      .map((node) => node.data.id)
+      .sort()
+      .forEach((id) => {
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = id;
+        select.appendChild(option);
+      });
+
+    if (previousValue && state.rawNodeMap.has(previousValue)) {
+      select.value = previousValue;
+    }
+  }
+
+  function formatLastUpdated(timestamp) {
+    if (!timestamp) return "Ingen uppdatering ännu";
+
+    try {
+      return new Date(timestamp * 1000).toLocaleString("sv-SE");
+    } catch (e) {
+      return String(timestamp);
+    }
+  }
+
+  function setDataStatus(message) {
+    const dataStatus = document.getElementById("dataStatus");
+    if (dataStatus) {
+      dataStatus.textContent = message;
+    }
+  }
+
+  function refreshStatus(showErrors = false) {
+    return fetch("/api/status")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to fetch /api/status");
         }
-        return r.json();
+        return response.json();
       })
-      .then((data) => {
-        if (!data.nodes) data.nodes = [];
-        if (!data.edges) data.edges = [];
-
-        data.edges = data.edges.filter(
-          (e) => e.data && e.data.source && e.data.target
-        );
-
-        data.edges.forEach((e, idx) => {
-          if (!e.data.id) e.data.id = `e${idx}`;
-        });
-
-        data.nodes.forEach((n) => {
-          if (!n.data.id && n.data.label) {
-            n.data.id = n.data.label;
-          }
-          if (!n.data.label && n.data.id) {
-            n.data.label = n.data.id;
-          }
-        });
-
-        state.rawData = data;
-        populateHostSelect(data.nodes);
+      .then((status) => {
+        const lastUpdated = Number(status.last_updated) || 0;
+        const changed = !!lastUpdated && lastUpdated !== state.lastUpdated;
+        state.lastUpdated = lastUpdated;
+        setDataStatus(`Senast uppdaterad: ${formatLastUpdated(lastUpdated)}`);
+        return { changed, lastUpdated };
       })
       .catch((err) => {
         console.error(err);
-        alert("Kunde inte läsa nätverksdata: " + err.message);
-      })
-      .finally(() => {
-        showSpinner(false);
+        if (showErrors) {
+          alert("Kunde inte läsa status: " + err.message);
+        }
+        if (state.lastUpdated) {
+          setDataStatus(`Senast uppdaterad: ${formatLastUpdated(state.lastUpdated)}`);
+        } else {
+          setDataStatus("Kunde inte läsa status.");
+        }
+        return { changed: false, lastUpdated: state.lastUpdated || 0, error: err };
       });
   }
 
-  function init() {
-    const filters = NM.filters || {};
+  function fetchNetworkMap(options = {}) {
+    const {
+      redrawIfGraphActive = false,
+      showBusy = true,
+      showErrors = true,
+      showNoEdgesAlert = true,
+    } = options;
 
+    if (showBusy) {
+      showSpinner(true);
+    }
+
+    return fetch("/api/network_map")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to fetch /api/network_map");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        const normalized = sanitizeNetworkMapData(data);
+        state.rawData = normalized;
+        state.rawNodeMap = buildNodeMap(normalized.nodes);
+        populateHostSelect(normalized.nodes);
+
+        if (redrawIfGraphActive && state.hasDrawnGraph) {
+          applyFiltersAndDraw({ showNoEdgesAlert });
+        }
+
+        return normalized;
+      })
+      .catch((err) => {
+        console.error(err);
+        if (showErrors) {
+          alert("Kunde inte läsa nätverksdata: " + err.message);
+        }
+        throw err;
+      })
+      .finally(() => {
+        if (showBusy) {
+          showSpinner(false);
+        }
+      });
+  }
+
+  function readFilterSettings() {
+    const filters = NM.filters || {};
     const hostSelect = document.getElementById("hostSelect");
+
+    return {
+      host: hostSelect ? hostSelect.value : "",
+      srcTokens: filters.parseListFilter
+        ? filters.parseListFilter((document.getElementById("filterSrc") || {}).value || "")
+        : [],
+      dstTokens: filters.parseListFilter
+        ? filters.parseListFilter((document.getElementById("filterDst") || {}).value || "")
+        : [],
+      portMatcher: filters.parsePortFilter
+        ? filters.parsePortFilter(((document.getElementById("filterPort") || {}).value || "").trim())
+        : null,
+      excludePublic: !!(document.getElementById("excludePub") || {}).checked,
+      excludeNoisePorts: (document.getElementById("excludeNoisePorts") || {}).checked !== false,
+      ipFilters: filters.parseIpFilters
+        ? filters.parseIpFilters(((document.getElementById("filterIp") || {}).value || "").trim())
+        : [],
+      minSep:
+        parseInt(((document.getElementById("minSep") || {}).value || "50").trim(), 10) ||
+        50,
+      sx:
+        parseFloat(((document.getElementById("scaleX") || {}).value || "1.0").trim()) ||
+        1.0,
+      sy:
+        parseFloat(((document.getElementById("scaleY") || {}).value || "1.0").trim()) ||
+        1.0,
+    };
+  }
+
+  function applyFiltersAndDraw(options = {}) {
+    const { showNoEdgesAlert = true } = options;
+
+    if (!state.rawData) return false;
+
+    const settings = readFilterSettings();
+    let subgraph;
+
+    if (settings.host && typeof NM.buildSubgraph === "function") {
+      subgraph = NM.buildSubgraph(
+        settings.host,
+        settings.srcTokens,
+        settings.dstTokens,
+        settings.portMatcher,
+        settings.excludePublic,
+        settings.excludeNoisePorts,
+        settings.ipFilters
+      );
+    } else if (typeof NM.buildGlobalSubgraph === "function") {
+      subgraph = NM.buildGlobalSubgraph(
+        settings.srcTokens,
+        settings.dstTokens,
+        settings.portMatcher,
+        settings.excludePublic,
+        settings.excludeNoisePorts,
+        settings.ipFilters
+      );
+    } else {
+      alert("Filter-funktioner saknas (buildSubgraph / buildGlobalSubgraph).");
+      return false;
+    }
+
+    if (!subgraph || !Array.isArray(subgraph.nodes) || !Array.isArray(subgraph.edges)) {
+      alert("Felaktigt subgraph-resultat.");
+      return false;
+    }
+
+    if (typeof NM.drawGraph !== "function") {
+      alert("drawGraph saknas (graph.js inte laddad?).");
+      return false;
+    }
+
+    const drawn = NM.drawGraph({
+      nodes: subgraph.nodes,
+      edges: subgraph.edges,
+      minSep: settings.minSep,
+      sx: settings.sx,
+      sy: settings.sy,
+      showNoEdgesAlert,
+    });
+
+    state.hasDrawnGraph = drawn === true;
+    return state.hasDrawnGraph;
+  }
+
+  function startStatusPolling() {
+    if (state.pollTimer) {
+      global.clearInterval(state.pollTimer);
+    }
+
+    state.pollTimer = global.setInterval(() => {
+      refreshStatus(false).then((status) => {
+        if (status.changed) {
+          fetchNetworkMap({
+            redrawIfGraphActive: state.hasDrawnGraph,
+            showBusy: false,
+            showErrors: false,
+            showNoEdgesAlert: false,
+          }).catch(() => {
+            // handled in fetchNetworkMap
+          });
+        }
+      });
+    }, STATUS_POLL_INTERVAL_MS);
+  }
+
+  function init() {
+    ensureStateDefaults();
+
     const hostFilterRow = document.getElementById("hostFilterRow");
     const btnApply = document.getElementById("btnApply");
+    const btnRefreshData = document.getElementById("btnRefreshData");
     const btnDownloadReport = document.getElementById("btnDownloadReport");
     const toggleDarkMode = document.getElementById("toggleDarkMode");
 
@@ -144,7 +367,6 @@
       hostFilterRow.style.display = "none";
     }
 
-    // Summary filter events
     [sumFsrc, sumFdst, sumFport].forEach((el) => {
       if (!el) return;
       el.addEventListener("input", () => {
@@ -186,13 +408,13 @@
 
     if (minimizeNb) {
       minimizeNb.onclick = function () {
-        const c = document.getElementById("nbDetails");
-        if (!c) return;
-        if (c.style.display === "none") {
-          c.style.display = "block";
+        const details = document.getElementById("nbDetails");
+        if (!details) return;
+        if (details.style.display === "none") {
+          details.style.display = "block";
           this.textContent = "[–]";
         } else {
-          c.style.display = "none";
+          details.style.display = "none";
           this.textContent = "[+]";
         }
       };
@@ -213,92 +435,36 @@
 
     if (btnApply) {
       btnApply.onclick = () => {
-        if (!state.rawData) return;
-
-        const host = hostSelect ? hostSelect.value : "";
-
-        const srcTokens = filters.parseListFilter
-          ? filters.parseListFilter(
-              document.getElementById("filterSrc").value
-            )
-          : [];
-        const dstTokens = filters.parseListFilter
-          ? filters.parseListFilter(
-              document.getElementById("filterDst").value
-            )
-          : [];
-        const portMatcher = filters.parsePortFilter
-          ? filters.parsePortFilter(
-              document.getElementById("filterPort").value.trim()
-            )
-          : null;
-        const excludePublic = document.getElementById("excludePub").checked;
-        const ipFilters = filters.parseIpFilters
-          ? filters.parseIpFilters(
-              document.getElementById("filterIp").value.trim()
-            )
-          : [];
-
-        const minSep =
-          parseInt(
-            document.getElementById("minSep").value.trim() || "50",
-            10
-          ) || 50;
-        const sx =
-          parseFloat(
-            document.getElementById("scaleX").value.trim() || "1.0"
-          ) || 1.0;
-        const sy =
-          parseFloat(
-            document.getElementById("scaleY").value.trim() || "1.0"
-          ) || 1.0;
-
-        let sub;
-        if (host && typeof NM.buildSubgraph === "function") {
-          sub = NM.buildSubgraph(
-            host,
-            srcTokens,
-            dstTokens,
-            portMatcher,
-            excludePublic,
-            ipFilters
-          );
-        } else if (typeof NM.buildGlobalSubgraph === "function") {
-          sub = NM.buildGlobalSubgraph(
-            srcTokens,
-            dstTokens,
-            portMatcher,
-            excludePublic,
-            ipFilters
-          );
-        } else {
-          alert("Filter-funktioner saknas (buildSubgraph / buildGlobalSubgraph).");
-          return;
-        }
-
-        if (!sub || !Array.isArray(sub.nodes) || !Array.isArray(sub.edges)) {
-          alert("Felaktigt subgraph-resultat.");
-          return;
-        }
-
-        if (typeof NM.drawGraph !== "function") {
-          alert("drawGraph saknas (graph.js inte laddad?).");
-          return;
-        }
-
-        NM.drawGraph({
-          nodes: sub.nodes,
-          edges: sub.edges,
-          minSep,
-          sx,
-          sy,
-        });
+        applyFiltersAndDraw({ showNoEdgesAlert: true });
       };
     }
 
-    fetchNetworkMap();
+    if (btnRefreshData) {
+      btnRefreshData.onclick = () => {
+        setDataStatus("Uppdaterar data…");
+        fetchNetworkMap({
+          redrawIfGraphActive: state.hasDrawnGraph,
+          showBusy: true,
+          showErrors: true,
+          showNoEdgesAlert: true,
+        })
+          .then(() => refreshStatus(false))
+          .catch(() => {
+            // handled above
+          });
+      };
+    }
+
+    setDataStatus("Laddar data…");
+    fetchNetworkMap({ redrawIfGraphActive: false, showBusy: true, showErrors: true })
+      .then(() => refreshStatus(false))
+      .finally(() => {
+        startStatusPolling();
+      })
+      .catch(() => {
+        startStatusPolling();
+      });
   }
 
   document.addEventListener("DOMContentLoaded", init);
 })(window);
-

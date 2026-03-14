@@ -8,13 +8,14 @@ from config import REPORT_DIR
 from routes_core import router as core_router
 from routes_netbox import router as netbox_router
 from workers import start_workers
-from log import setup_logging, get_logger  # NEW
+from log import setup_logging, get_logger
 
 # Initialize logging as early as possible
 setup_logging()
 logger = get_logger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI()
 
@@ -27,7 +28,7 @@ app.add_middleware(
 )
 
 # Static mounts
-app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/reports", StaticFiles(directory=REPORT_DIR), name="reports")
 
 # Routers

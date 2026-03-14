@@ -12,9 +12,49 @@ cytoscape.use(cytoscapeCoseBilkent);
       global.NMState ||
       {
         rawData: null,
+        rawNodeMap: null,
+        currentGraph: { nodes: [], edges: [] },
         cy: null,
+        resizeHandler: null,
         summaryData: { incoming: [], outgoing: [] },
       });
+
+  function getRawNodeMap() {
+    if (state.rawNodeMap instanceof Map) {
+      return state.rawNodeMap;
+    }
+
+    const map = new Map();
+    (state.rawData?.nodes || []).forEach((node) => {
+      const id = node && node.data && node.data.id;
+      if (id) {
+        map.set(id, node);
+      }
+    });
+    state.rawNodeMap = map;
+    return map;
+  }
+
+  function setCurrentGraph(nodes, edges) {
+    state.currentGraph = {
+      nodes: Array.isArray(nodes) ? nodes.slice() : [],
+      edges: Array.isArray(edges) ? edges.slice() : [],
+    };
+  }
+
+  function removeResizeHandler() {
+    if (state.resizeHandler) {
+      global.removeEventListener("resize", state.resizeHandler);
+      state.resizeHandler = null;
+    }
+  }
+
+  function hideDetailPanels() {
+    const summary = document.getElementById("summary");
+    const nbinfo = document.getElementById("nbinfo");
+    if (summary) summary.hidden = true;
+    if (nbinfo) nbinfo.hidden = true;
+  }
 
   function buildSubgraph(
     host,
@@ -22,29 +62,32 @@ cytoscape.use(cytoscapeCoseBilkent);
     dstTokens,
     portMatcher,
     excludePublic,
+    excludeNoisePorts,
     ipFilters
   ) {
     const edges = (state.rawData?.edges || []).filter(
-      (e) =>
-        (e.data.source === host || e.data.target === host) &&
+      (edge) =>
+        (edge.data.source === host || edge.data.target === host) &&
         filters.edgeMatches(
-          e.data,
+          edge.data,
           srcTokens,
           dstTokens,
           portMatcher,
           excludePublic,
+          excludeNoisePorts,
           ipFilters
         )
     );
 
     const ids = new Set([host]);
-    edges.forEach((e) => {
-      ids.add(e.data.source);
-      ids.add(e.data.target);
+    edges.forEach((edge) => {
+      ids.add(edge.data.source);
+      ids.add(edge.data.target);
     });
 
+    const nodeMap = getRawNodeMap();
     const nodes = Array.from(ids)
-      .map((id) => (state.rawData?.nodes || []).find((n) => n.data.id === id))
+      .map((id) => nodeMap.get(id))
       .filter(Boolean);
 
     return { nodes, edges };
@@ -55,55 +98,75 @@ cytoscape.use(cytoscapeCoseBilkent);
     dstTokens,
     portMatcher,
     excludePublic,
+    excludeNoisePorts,
     ipFilters
   ) {
-    const edges = (state.rawData?.edges || []).filter((e) =>
+    const edges = (state.rawData?.edges || []).filter((edge) =>
       filters.edgeMatches(
-        e.data,
+        edge.data,
         srcTokens,
         dstTokens,
         portMatcher,
         excludePublic,
+        excludeNoisePorts,
         ipFilters
       )
     );
 
     const ids = new Set();
-    edges.forEach((e) => {
-      ids.add(e.data.source);
-      ids.add(e.data.target);
+    edges.forEach((edge) => {
+      ids.add(edge.data.source);
+      ids.add(edge.data.target);
     });
 
+    const nodeMap = getRawNodeMap();
     const nodes = Array.from(ids)
-      .map((id) => (state.rawData?.nodes || []).find((n) => n.data.id === id))
+      .map((id) => nodeMap.get(id))
       .filter(Boolean);
 
     return { nodes, edges };
   }
 
-  function drawGraph({ nodes, edges, minSep, sx, sy }) {
+  function drawGraph({
+    nodes,
+    edges,
+    minSep,
+    sx,
+    sy,
+    showNoEdgesAlert = true,
+  }) {
     const cyContainer = document.getElementById("cy");
-    if (!cyContainer) return;
+    if (!cyContainer) return false;
+
+    removeResizeHandler();
 
     if (state.cy) {
       state.cy.destroy();
       state.cy = null;
     }
 
-    if (!nodes.length || !edges.length) {
-      alert("Inga kanter matchar filtren.");
-      return;
+    if (!Array.isArray(nodes) || !Array.isArray(edges) || !nodes.length || !edges.length) {
+      setCurrentGraph([], []);
+      state.summaryData = { incoming: [], outgoing: [] };
+      hideDetailPanels();
+      if (showNoEdgesAlert) {
+        alert("Inga kanter matchar filtren.");
+      }
+      return false;
     }
 
-    const degrees = nodes.map((n) => n.data.degree || 0);
+    setCurrentGraph(nodes, edges);
+
+    const degrees = nodes.map((node) => node.data.degree || 0);
     const minD = Math.min(...degrees);
     const maxD = Math.max(...degrees);
+    const nodeSize = minD === maxD ? 40 : `mapData(degree, ${minD}, ${maxD}, 20, 60)`;
 
     state.cy = cytoscape({
       container: cyContainer,
       elements: {
-        nodes: nodes.map((n) => ({ data: n.data })),
-        edges: edges.map((e) => ({ data: e.data })),
+        nodes: nodes.map((node) => ({ data: node.data })),
+        edges: edges.map((edge) => ({ data: edge.data })),
       },
       layout: {
         name: "cose-bilkent",
@@ -118,8 +181,8 @@ cytoscape.use(cytoscapeCoseBilkent);
           selector: "node",
           style: {
             shape: "ellipse",
-            width: `mapData(degree, ${minD}, ${maxD}, 20, 60)`,
-            height: `mapData(degree, ${minD}, ${maxD}, 20, 60)`,
+            width: nodeSize,
+            height: nodeSize,
             label: "data(label)",
             "background-color": "data(color)",
             color: "#fff",
@@ -150,38 +213,41 @@ cytoscape.use(cytoscapeCoseBilkent);
     });
 
     state.cy.ready(() => {
-      state.cy.nodes().forEach((n) => {
-        const p = n.position();
-        n.position({ x: p.x * sx, y: p.y * sy });
+      state.cy.nodes().forEach((node) => {
+        const position = node.position();
+        node.position({ x: position.x * sx, y: position.y * sy });
       });
       state.cy.fit(50);
 
-      global.addEventListener("resize", () => {
+      state.resizeHandler = () => {
+        if (!state.cy) return;
         state.cy.resize();
         state.cy.fit(50);
-      });
+      };
+      global.addEventListener("resize", state.resizeHandler);
     });
 
-    state.cy.on("tap", "node", (e) => {
+    state.cy.on("tap", "node", (event) => {
       if (typeof NM.showSummary === "function") {
-        NM.showSummary(e.target);
+        NM.showSummary(event.target);
       }
       if (typeof NM.showNetboxInfo === "function") {
-        NM.showNetboxInfo(e.target.data("id"));
+        NM.showNetboxInfo(event.target.data("id"));
       }
     });
 
-    state.cy.on("tap", (e) => {
-      if (e.target === state.cy) {
+    state.cy.on("tap", (event) => {
+      if (event.target === state.cy) {
         state.cy.elements().removeClass("faded");
         const nbinfo = document.getElementById("nbinfo");
         if (nbinfo) nbinfo.hidden = true;
       }
     });
+
+    return true;
   }
 
   NM.buildSubgraph = buildSubgraph;
   NM.buildGlobalSubgraph = buildGlobalSubgraph;
   NM.drawGraph = drawGraph;
 })(window);
-
