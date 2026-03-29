@@ -2,7 +2,10 @@
 
 A web application that visualizes TCP network traffic collected via Zabbix agents and enriched with data from NetBox. The application also generates automatic 30-day reports (Excel/CSV/DrawIO).
 
-<big><string>Needed Zabbix plugin and template: windows_network_connections and linux_network_connections with related template:
+<big><string>Needed Zabbix plugin and template: windows_network_connections and linux_network_connections: <br>
+https://github.com/Keberneth/Zabbix-Plugins
+<br><br>
+With related template:
 <br>
 Linux Network Map by Zabbix agent active.yaml
 <br>
@@ -11,8 +14,6 @@ https://github.com/Keberneth/Zabbix-Templates/tree/main/OS/Linux
 Windows Network Map by Zabbix agent active.yaml
 <br>
 https://github.com/Keberneth/Zabbix-Templates/tree/main/OS/Windows
-<br>
-https://github.com/Keberneth/Zabbix-Plugins
 <br>
 
 # Links
