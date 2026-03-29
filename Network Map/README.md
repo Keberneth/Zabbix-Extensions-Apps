@@ -5,7 +5,7 @@ A web application that visualizes TCP network traffic collected via Zabbix agent
 <big><strong>Needed Zabbix plugin: windows_network_connections and linux_network_connections:</big></strong> <br>
 https://github.com/Keberneth/Zabbix-Plugins
 <br><br>
-With related template:
+<big><strong>With related template:</big></strong>
 <br>
 Linux Network Map by Zabbix agent active.yaml
 <br>
