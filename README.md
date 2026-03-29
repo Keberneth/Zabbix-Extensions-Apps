@@ -1,4 +1,4 @@
-# Application, integrations and templates for Zabbix and Netbox. 
+# Linux service for Zabbix Network Map and integration script from Zabbix to Netbox. 
 Using Netbox as a source of truth for virtual machines and network and use Zabbix to get more and better instight in the environment, not just monitoring.
 
 
@@ -18,12 +18,6 @@ Port, ports and port range<br><br>
 
 Report button to download 30 day history in:<br>
 Excel, csv and drawio files<br><br>
-
-
-## **Zabbix AI**
-
-A simple AI integrations. Triggerred problems is sent to python backend that collect information from Zabbix using trigger action webhook and enrished the information with information about the virtual machine from Netbox. Send the information to the AI you choose to use in Ollama.<br>
-The answer from the AI is saved as an htmlfile and link to the file is published as a messsage on the active triggered problem in Zabbix. (simple 1st line analysis). When problem is resolved the html file is removed, as long as send resolve is active in the Zabbix AI media.<br><br>
 
 
 ## **Zabbix to Netbox integration**
